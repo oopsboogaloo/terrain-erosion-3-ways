@@ -1,3 +1,181 @@
+# globerode: spherical terrain erosion for world maps
+
+Turn a rough, hand-painted world map (a few height levels on an
+equirectangular image) into an eroded planetary height map with river valleys,
+ridges and continental shelves. Everything after loading the map runs on a
+**cube sphere**, so there is no polar stretching and no seam at ±180°. Outputs
+are equirectangular height maps (EXR / 16-bit PNG / TIFF), masks for
+texturing, and a ready-made Blender scene.
+
+![mini_earth preview](docs/images/step9_mini_earth_preview.png)
+
+Specification, design, plan and decision log:
+[SPEC](docs/SPEC.md) · [DESIGN](docs/DESIGN.md) · [PLAN](docs/PLAN.md) ·
+[decisions](docs/decisions.md). The original "Three Ways" article that this
+repository started from is kept [below](#three-ways-of-generating-terrain-with-erosion-features).
+
+## Install
+
+Needs Python 3.13 and [uv](https://docs.astral.sh/uv/).
+
+```sh
+uv sync                    # runtime + dev tools
+uv sync --extra blender    # optional: headless Blender (bpy) for `globerode render`
+uv run globerode --version
+```
+
+## Quick start
+
+```sh
+# 1. A synthetic world to try things on (writes levels.png + world.toml)
+uv run globerode testworld mini_earth worlds/mini --width 2048 --output-width 8192
+
+# 2. Fast preview: 2048x1024 output, one level (N=512), ~1.5 min
+uv run globerode run worlds/mini/world.toml --preview
+
+# 3. Full 8K run (8192x4096)
+uv run globerode run worlds/mini/world.toml
+
+# 4. Render the globe (needs the blender extra)
+uv run globerode render runs/<timestamp>-mini_earth --size 1024 --lon 20 --lat 20
+```
+
+Every command prints one JSON object on stdout; progress goes to stderr.
+Exit codes: `0` ok · `1` a hard quality check failed (outputs still written)
+· `2` bad config or input · `3` not enough memory · `4` internal error.
+
+## Painting your map
+
+- An **equirectangular** image, width = 2 × height, longitude −180°…180° left
+  to right, north at the top. 8- or 16-bit grayscale or a palette image.
+- Each **pixel value is a level**. List every value in the config, as land
+  (with a `base` from 0 to 1) or ocean (with a `depth_m`). Any number of
+  levels is fine. A value missing from the config stops the run and lists
+  the bad pixels, so turn anti-aliasing off when painting.
+- The land/sea boundary of the image is the coastline, and it is kept
+  **exactly** in the output (checked pixel by pixel).
+
+```toml
+name = "myworld"
+
+[resolution]
+output_width = 8192          # 16384 needs ~16 GB RAM
+levels = [512, 2048]         # coarse-to-fine erosion; last = output_width / 4
+
+[erode]
+iterations = [200, 100]      # one count per level
+
+[input]
+levels = "levels.png"        # relative to this file
+
+[[input.classes]]
+value = 0
+name = "deep"
+kind = "ocean"
+depth_m = -4500
+
+[[input.classes]]
+value = 60
+name = "shelf"
+kind = "ocean"
+depth_m = -150
+
+[[input.classes]]
+value = 120
+name = "lowland"
+kind = "land"
+base = 0.15
+
+[[input.classes]]
+value = 210
+name = "highland"
+kind = "land"
+base = 0.7
+
+[[input.classes]]
+value = 255
+name = "peak"
+kind = "land"
+base = 1.0
+```
+
+`globerode testworld … ` writes a complete example config. Any setting can be
+overridden on the command line, e.g. `--set erode.k=1e-6 --set prep.sigma_km=150`.
+
+### Main settings
+
+| Setting | Default | Effect |
+|---|---|---|
+| `prep.sigma_km` | 120 | Smoothing width of the painted land levels (in km on the sphere). |
+| `prep.curve` | 0→0, 0.2→150, 0.5→900, 0.8→3500, 1→7500 m | Height curve from smoothed level (0–1) to metres. |
+| `prep.coast_ramp_km` | 40 | Width of the low coastal strip. |
+| `prep.noise.amp_m`, `amp_per_m`, `gain` | 400, 0.25, 0.7 | Roughness that seeds branching valleys. |
+| `erode.k` | 7e-7 | Erodibility: higher = deeper, more eroded valleys. |
+| `erode.uplift_per_km_m_per_yr` | 1.3e-4 | Mountain building, per km of painted height. |
+| `erode.iterations` | [200, 100] | Erosion steps per level. |
+| `erode.restore_heights` | `local` | Keep each region (~200 km) at its painted average height. |
+| `erode.peak_cap_ratio` | 1.1 | Peaks are softly capped near this × painted height (0 = off). |
+| `erode.river_threshold_km2` | 50 000 | Catchment area that counts as a river in the mask. |
+| `ocean.shelf_width_km`, `shelf_depth_m` | 80, −130 | Continental shelf. |
+| `blender.exaggeration` | 20 | Vertical exaggeration in the Blender scene. |
+
+## Outputs
+
+Each run writes a folder `runs/<timestamp>-<name>/`:
+
+| File | Content |
+|---|---|
+| `outputs/height_m.exr` | Height in metres, float32, equirect. |
+| `outputs/height16.png` | 16-bit height, mapped by `output.png_range_m` (in `metadata.json`). |
+| `outputs/mask_land.png` | Land mask (exactly the painted coastline). |
+| `outputs/mask_flow.png`, `mask_rivers.png`, `mask_erosion.png` | Drainage (log area), major rivers, depth eroded. |
+| `previews/` | Hillshaded map, 6 globe views, close-ups of both poles, the 180° seam and a cube corner, mask overlay, curve and histogram charts. |
+| `report.md`, `report.json` | Quality checks (see below) and metrics. |
+| `blender_globe.py` | Self-contained Blender 5 scene script for this run. |
+| `metadata.json`, `config.resolved.toml`, `log.jsonl`, `state.npz` | Run details; `state.npz` lets `globerode report` rerun. |
+
+**Quality checks** in every report: the coast matches the input exactly,
+every land cell drains to the sea, no seams at cube-face edges (these three
+fail the run), plus peak heights vs painted, Hack's law exponent and Horton
+branching ratio (these warn).
+
+## Blender
+
+`blender_globe.py` builds a globe with true displacement from the EXR
+(Cycles adaptive subdivision), a height colour ramp with rivers, a sea
+sphere, a sun and an orthographic camera.
+
+```sh
+blender -b -P runs/<run>/blender_globe.py -- --render globe.png --size 2048 --samples 64
+blender -b -P runs/<run>/blender_globe.py -- --save globe.blend     # open in Blender
+uv run globerode render runs/<run>                                   # same, via bpy
+```
+
+It can also be run through a Blender MCP connection.
+
+## Performance
+
+Measured in a 4-core / 15 GB cloud sandbox (CPU only):
+
+| Run | Time | Peak memory |
+|---|---|---|
+| Preview (2048×1024, N=512, 200 iterations) | ~1.5 min | ~0.5 GB |
+| 8K (8192×4096, N=512→2048) | ~25 min | ~4 GB |
+| 16K | not supported in the sandbox (RAM) | — |
+
+A machine with more cores runs proportionally faster for the parallel stages.
+
+## Development
+
+```sh
+uv run pytest -m "not slow"   # fast suite (CI)
+uv run pytest -m slow         # Blender render tests (needs the blender extra)
+uv run ruff check && uv run ruff format --check && uv run mypy
+uv run python scripts/tune_sweep.py WORLD.toml OUT "erode.k=1e-6" "erode.k=5e-7"   # parameter sweeps
+```
+
+---
+
 # Three Ways of Generating Terrain with Erosion Features
 
 ## Background
