@@ -48,7 +48,7 @@ line-length = 100
 target-version = "py313"
 src = ["src", "tests"]
 # Only lint the package and tests; the legacy root scripts are reference only.
-include = ["src/**/*.py", "tests/**/*.py"]
+include = ["src/**/*.py", "tests/**/*.py", "scripts/**/*.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "NPY", "SIM", "RUF"]
@@ -56,7 +56,7 @@ select = ["E", "F", "W", "I", "B", "UP", "NPY", "SIM", "RUF"]
 [tool.mypy]
 python_version = "3.13"
 strict = true
-files = ["src", "tests"]
+files = ["src", "tests", "scripts"]
 
 [[tool.mypy.overrides]]
 module = ["numba.*", "scipy.*", "tifffile.*", "OpenEXR.*", "bpy.*"]
