@@ -14,3 +14,4 @@ history.
 | D6 | 2026-11-08 | Hypsometry restore after erosion, default on | Keeps heights about as painted without fine K/U tuning | DESIGN §7.6 |
 | D7 | 2026-11-08 | argparse CLI | No dependency; enough for a Claude-driven tool | DESIGN §11 |
 | D8 | 2026-11-08 | Previews rendered in NumPy; Blender only for `render` | Fast, no Blender needed in CI | DESIGN §12 |
+| P1 | 2026-11-08 | Review policy A: user reviews milestone PRs (steps 4, 5, 6, 10); Claude merges the others on green CI | Keeps the user on the key results without blocking routine steps | PLAN §3 |
