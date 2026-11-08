@@ -81,7 +81,7 @@ class NoiseSpec:
     seed: int = 42
     octaves: int = 8
     base_m: float = 800_000.0
-    gain: float = 0.5
+    gain: float = 0.7
     warp: float = 0.3  # domain-warp offset, in units of the base wavelength
 
 

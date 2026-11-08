@@ -100,10 +100,10 @@ class NoiseConfig(_Strict):
     seed: int = 42
     octaves: int = Field(8, ge=1, le=16)
     base_km: float = Field(800.0, gt=0)
-    gain: float = Field(0.5, gt=0, lt=1)
+    gain: float = Field(0.7, gt=0, lt=1)
     warp: float = Field(0.3, ge=0)
-    amp_m: float = Field(50.0, ge=0, description="noise amplitude at sea level")
-    amp_per_m: float = Field(0.15, ge=0, description="extra amplitude per metre of height")
+    amp_m: float = Field(400.0, ge=0, description="noise amplitude at sea level")
+    amp_per_m: float = Field(0.25, ge=0, description="extra amplitude per metre of height")
 
 
 class PrepConfig(_Strict):
@@ -137,7 +137,7 @@ class OceanConfig(_Strict):
 
 class ErodeConfig(_Strict):
     enabled: bool = True
-    k: float = Field(2e-6, gt=0, description="erodibility K (1/yr * m^(1-2m))")
+    k: float = Field(7e-7, gt=0, description="erodibility K (1/yr * m^(1-2m))")
     m: float = Field(0.5, gt=0, le=1)
     dt_yr: float = Field(1e5, gt=0)
     uplift_m_per_yr: float = Field(1e-3, ge=0, description="uplift at the highest painted land")
@@ -146,7 +146,7 @@ class ErodeConfig(_Strict):
     epsilon_m: float = Field(1e-3, gt=0)
     restore_heights: Literal["local", "none"] = "local"
     restore_sigma_km: float = Field(200.0, gt=0, description="region size for the height restore")
-    river_threshold_km2: float = Field(10_000.0, gt=0)
+    river_threshold_km2: float = Field(50_000.0, gt=0)
 
     @field_validator("iterations")
     @classmethod
