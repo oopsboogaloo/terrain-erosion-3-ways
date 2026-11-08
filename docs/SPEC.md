@@ -185,6 +185,7 @@ in the cloud sandbox and on the user's PC.
 | Input projection | Equirectangular (plate carrée) only. |
 | Height levels | Any number of land and ocean levels, set in config. Same code as 3 levels. |
 | Ocean depth | Painted as ocean levels in the `levels` map; generated shelf ramp near the coast. |
+| Rivers | Carved valleys + `mask_rivers`; water drawn in Blender from the mask. No water surface in the height map. |
 | Mountain height | Ranges stay about as high as painted (uplift from painted height). |
 | Viewer / renderer | Blender (5.0+), usually driven by Claude through the Blender MCP. No own GUI. |
 | Hardware | CPU (Numba) everywhere: cloud sandbox and user PC. GPU only if measured need (§3.5). |
@@ -706,13 +707,13 @@ New code goes in a `globerode/` package. The repo's existing scripts
 | If needed | GPU backend, only if measured PC runs are too slow (§3.5). |
 | Later | Aspirational directions in §18. |
 
-## 17. Open questions
+## 17. Open questions (all answered)
 
 1. ~~Input projection?~~ **Decided: equirectangular.**
 2. ~~Ocean depths?~~ **Decided: painted, as ocean levels in the `levels` map.**
 3. ~~Number of levels?~~ **Decided: any number.**
-4. Do you want rivers to be visible water in the height map (a flat water
-   surface in wide rivers), or only as valleys plus a mask?
+4. ~~Rivers as water?~~ **Decided: valleys + river mask.** Blender draws the
+   water from the mask; no flat water surface in the height map.
 5. ~~Mountain height?~~ **Decided: stay about as painted.** An age slider
    can come later.
 6. ~~Blender setup?~~ **Decided: recommended setup in §12.1.**
