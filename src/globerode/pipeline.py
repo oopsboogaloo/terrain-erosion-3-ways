@@ -39,7 +39,8 @@ from globerode.resample import (
 # Peak memory per cube cell at the final level. Calibrated on measured runs
 # (M3: 8K mini_earth peaked at 4.1 GB = ~140 B/cell incl. smoothing tables,
 # routing heap and float64 heights); DESIGN §4's 45 B/cell was too low.
-BYTES_PER_CELL = 140
+# The varied-terrain fields (D26) raised the 8K peak to 4.8 GB: 165 B/cell (D29).
+BYTES_PER_CELL = 165
 BYTES_PER_OUTPUT_PIXEL = 4 + 4 + 2 + 2 + 8  # height f32, relock f32, classes, uint16, temp
 
 

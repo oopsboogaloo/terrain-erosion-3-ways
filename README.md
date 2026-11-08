@@ -164,7 +164,7 @@ Measured in a 4-core / 15 GB cloud sandbox (CPU only):
 | Run | Time | Peak memory |
 |---|---|---|
 | Preview (2048×1024, N=512, 200 iterations) | ~1.5 min | ~0.5 GB |
-| 8K (8192×4096, N=512→2048) | ~25 min | ~4.1 GB |
+| 8K (8192×4096, N=512→2048) | ~31 min | ~4.8 GB |
 | Blender render of the 8K EXR, 1024 px, 32 samples | ~35 s | — |
 | 16K | not supported in the sandbox (RAM) | — |
 
