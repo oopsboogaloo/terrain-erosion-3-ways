@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import pprint
 import subprocess
 import sys
 from importlib.resources import files
@@ -20,7 +20,8 @@ def write_globe_script(run_dir: Path, settings: dict[str, Any]) -> Path:
     template = files("globerode.blender").joinpath("globe_script.py").read_text()
     if _PLACEHOLDER not in template:
         raise RuntimeError("globe script template is missing its SETTINGS line")
-    line = f"SETTINGS: dict = {json.dumps(settings, indent=4)}"
+    # Python literal (not JSON): None must stay None, not become `null`.
+    line = f"SETTINGS: dict = {pprint.pformat(settings, indent=4, sort_dicts=True)}"
     path = run_dir / SCRIPT_NAME
     path.write_text(template.replace(_PLACEHOLDER, line))
     return path

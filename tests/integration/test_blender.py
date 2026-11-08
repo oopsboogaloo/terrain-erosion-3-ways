@@ -15,28 +15,47 @@ from globerode.cli import main
 from globerode.testworlds import write_world
 
 
-def _run(tmp_path: Path, world: str = "mini_earth") -> Path:
+def _run(tmp_path: Path, world: str = "mini_earth", *extra: str) -> Path:
     cfg = write_world(world, tmp_path / world, width=256)
     runs = tmp_path / "runs"
-    assert main(["run", str(cfg), "--runs-dir", str(runs), "--quiet"]) in (0, 1)
+    assert main(["run", str(cfg), "--runs-dir", str(runs), "--quiet", *extra]) in (0, 1)
     return sorted(runs.iterdir())[-1]
 
 
-def test_script_is_written_with_settings(tmp_path: Path) -> None:
-    run = _run(tmp_path)
-    text = (run / SCRIPT_NAME).read_text()
-    tree = ast.parse(text)  # valid Python
+def _settings(run: Path) -> dict[str, object]:
+    tree = ast.parse((run / SCRIPT_NAME).read_text())
     node = next(
         n
         for n in tree.body
         if isinstance(n, ast.AnnAssign) and getattr(n.target, "id", "") == "SETTINGS"
     )
     assert node.value is not None
-    s = ast.literal_eval(node.value)
+    out = ast.literal_eval(node.value)  # fails on non-literals such as `null`
+    assert isinstance(out, dict)
+    return out
+
+
+def test_script_is_written_with_settings(tmp_path: Path) -> None:
+    run = _run(tmp_path)
+    s = _settings(run)
     assert s["height_exr"] == "outputs/height_m.exr"
     assert s["rivers_png"] == "outputs/mask_rivers.png"
     assert s["exaggeration"] == 20.0 and s["radius_m"] == 6_371_000.0
-    assert (run / s["height_exr"]).exists()
+    assert (run / str(s["height_exr"])).exists()
+
+
+def test_script_without_erosion_has_no_rivers_and_is_valid(tmp_path: Path) -> None:
+    run = _run(tmp_path, "ring", "--set", "erode.enabled=false")
+    assert _settings(run)["rivers_png"] is None
+    code = (run / SCRIPT_NAME).read_text().split("HERE =")[0]
+    namespace: dict[str, object] = {}
+    exec(compile(code.replace("import bpy", ""), "settings", "exec"), namespace)
+    assert namespace["SETTINGS"]["rivers_png"] is None  # type: ignore[index]
+
+
+def test_no_script_without_exr(tmp_path: Path) -> None:
+    run = _run(tmp_path, "ring", "--set", "output.formats=['png16']")
+    assert not (run / SCRIPT_NAME).exists()
 
 
 @pytest.mark.slow

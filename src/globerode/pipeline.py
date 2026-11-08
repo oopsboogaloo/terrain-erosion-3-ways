@@ -216,16 +216,19 @@ def run(cfg: Config, run_dir: Path, quiet: bool = False) -> RunResult:
         log.event("report", status=report["status"])
 
     land_px_max = float(height_eq[land_out].max()) if land_out.any() else 1.0
-    write_globe_script(
-        run_dir,
-        {
-            "height_exr": "outputs/height_m.exr" if "exr32" in cfg.output.formats else None,
-            "rivers_png": "outputs/mask_rivers.png" if routing is not None else None,
-            "radius_m": cfg.radius_m,
-            "exaggeration": cfg.blender.exaggeration,
-            "max_height_m": land_px_max,
-        },
-    )
+    if "exr32" not in cfg.output.formats:
+        log.event("blender script skipped: needs exr32 in output.formats")
+    else:
+        write_globe_script(
+            run_dir,
+            {
+                "height_exr": "outputs/height_m.exr",
+                "rivers_png": "outputs/mask_rivers.png" if routing is not None else None,
+                "radius_m": cfg.radius_m,
+                "exaggeration": cfg.blender.exaggeration,
+                "max_height_m": land_px_max,
+            },
+        )
 
     total = round(time.perf_counter() - t_start, 3)
     land_px = height_eq[land_out]
