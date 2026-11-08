@@ -23,8 +23,8 @@ The goal is visual plausibility, not geomorphological accuracy.
 
 - Plate tectonics, climate or ocean simulation (aspirational, see §17).
 - Fine droplet-style erosion detail (a possible later add-on, §8.6).
-- A GUI. v1 is a command-line tool with a config file and preview images
-  (§10). The core is a library so a GUI can be added later.
+- A GUI or our own globe viewer. **Blender is the viewer** (§11.1). The tool
+  is a command-line program with a config file and preview images (§10).
 - Real-world GIS accuracy (datums, ellipsoids). The planet is a perfect sphere.
 
 ## 2. MVP (version 1)
@@ -35,8 +35,9 @@ eroded without a feature, the feature waits.**
 
 ### 2.1 In the MVP
 
-1. **Input**: one equirectangular `levels` image (ocean / lowland / midland /
-   highland). Its land/sea boundary is the coastline.
+1. **Input**: one equirectangular `levels` image with **any number of land
+   and ocean levels** (e.g. deep ocean / shelf / lowland / midland /
+   highland), defined in config. Its land/sea boundary is the coastline.
 2. **Grid**: cube sphere, equirect → cube resampling, seam handling (§5, §6.1).
 3. **Prep**: coast distance field, spherical smoothing with σ in km, height
    curve, 3D seed noise (§7).
@@ -45,11 +46,12 @@ eroded without a feature, the feature waits.**
    from the curved height map so ranges keep roughly their painted height (§8.1–8.2).
    Two-level cascade (preview N=512 → N=2048).
 5. **Coast**: `locked` mode only (§9.3).
-6. **Ocean**: depth ramp from the coast distance field (shelf → slope →
-   flat abyss). Not eroded.
+6. **Ocean**: painted ocean levels, smoothed, combined with a shelf ramp
+   near the coast (§9.1). Not eroded.
 7. **Output**: 32-bit EXR (metres) and 16-bit PNG equirect, plus `mask_flow`
    and `mask_erosion` (both nearly free), hillshaded previews and
-   `metadata.json`.
+   `metadata.json`. A Blender script that builds a globe scene from the EXR
+   (§11.1).
 8. **Interface**: `globerode run world.toml [--preview]`. One TOML config.
 9. **Compute**: **CPU only** (NumPy + Numba). Overnight runs are acceptable,
    so the GPU port can wait. The CPU code is also needed as the test
@@ -61,7 +63,7 @@ eroded without a feature, the feature waits.**
 GPU kernels · sediment deposition and deposition mask · marine fans ·
 delta coast mode · separate high-res coast mask · hardness / rainfall /
 uplift / protect / forced rivers / forced lakes maps · painted bathymetry ·
-cube-face export · lake mask · 16K · checkpoint resume · Blender guide.
+cube-face export · lake mask · 16K · checkpoint resume · age slider (§8.4).
 
 ### 2.3 MVP done when
 
@@ -74,12 +76,16 @@ cube-face export · lake mask · 16K · checkpoint resume · Blender guide.
 | Topic | Decision |
 |---|---|
 | Input projection | Equirectangular (plate carrée) only. |
+| Height levels | Any number of land and ocean levels, set in config. Same code as 3 levels. |
+| Ocean depth | Painted as ocean levels in the `levels` map; generated shelf ramp near the coast. |
+| Mountain height | Ranges stay about as high as painted (uplift from painted height). |
+| Viewer / renderer | Blender (5.0+), usually driven by Claude through the Blender MCP. No own GUI. |
 | Hardware | NVIDIA GPU (CUDA) target. **MVP runs on CPU**; GPU port after. |
 | Resolution | 8192×4096 equirectangular output first; design must scale to 16384×8192. |
 | Interface | CLI + config file + preview images. |
 | Erosion model | Stream power law + hillslope diffusion + simple sediment deposition. |
 | Pre-processing | Smoothing and height curve run on the sphere, inside the tool. |
-| Ocean | Generated continental shelf and slope, plus offshore sediment deposits. |
+| Ocean deposits | Offshore sediment fans (after MVP). |
 | Inland pits | Filled: every river reaches the sea. Filled areas exported as a lake mask. |
 | Coastline | Config option: `locked` (exact, default) or `deltas` (sediment may build land). |
 | Optional painted inputs | Rock hardness, rainfall, uplift/protect, fixed rivers and lakes, high-res exact coastline. |
@@ -156,9 +162,8 @@ All raster inputs are equirectangular images. Size can be anything with a
 
 | Input | Required | Format | Meaning |
 |---|---|---|---|
-| `levels` | yes | 8/16-bit PNG/TIFF, palette or grayscale | Painted terrain classes: ocean, lowland, midland, highland (more levels allowed). Mapping from pixel value to class set in config. |
+| `levels` | yes | 8/16-bit PNG/TIFF, palette or grayscale | Painted classes, any number, land and ocean (e.g. deep ocean, shelf, lowland, midland, highland). Config maps each pixel value to a class. |
 | `coast` | no | Grayscale, ideally higher-res and anti-aliased | Exact land mask. Overrides the land/sea boundary taken from `levels`. The 0.5 iso-line is the coast, so it is sub-pixel accurate. |
-| `ocean_depth` | no | Grayscale | Optional painted bathymetry hints (trenches, ridges) added to the generated shelf. |
 | `hardness` | no | Grayscale 0–1 | Rock resistance. Scales K down (harder = less erosion). |
 | `rainfall` | no | Grayscale 0–1 | Precipitation. Weights drainage area into discharge. |
 | `uplift` | no | Grayscale 0–1 | Tectonic uplift rate. Keeps ranges high while erosion cuts them. |
@@ -185,8 +190,16 @@ coastlines (SVG/GeoJSON).
 
 ### 7.1 Base height from levels
 
-Each class gets a base value from config (e.g. lowland 0.15, midland 0.45,
-highland 1.0 on a 0–1 scale; ocean handled separately in §9).
+Each class is a config entry with its pixel value, whether it is land or
+ocean, and a base value:
+
+- **Land** classes: 0–1 value, smoothed and then mapped through the height
+  curve (§7.3). Example: lowland 0.15, midland 0.45, highland 1.0.
+- **Ocean** classes: depth in metres (e.g. shelf −150, ocean −4000,
+  trench −8000), handled in §9.1.
+
+Any number of classes is supported. The code is the same for 3 or 10, so
+this costs nothing extra. Start with 3–4 land levels and 2–3 ocean levels.
 
 ### 7.2 Mask-aware spherical Gaussian smoothing
 
@@ -284,6 +297,9 @@ Erosion then cuts valleys into ranges that stay roughly as high as painted.
 
 - Set by `iterations` per level, or `erosion_strength` (0–1) mapped to total
   simulated time.
+- **Age slider (after MVP)**: `age` (0–1) scales uplift down so ranges
+  wear lower and broader over time. MVP default: ranges stay about as
+  painted.
 - Checkpoints (all fields) are saved per level, so a run can resume or be
   re-run from any stage with new parameters.
 
@@ -310,13 +326,15 @@ Erosion then cuts valleys into ranges that stay roughly as high as painted.
 
 ### 9.1 Generated bathymetry
 
-From the signed coast distance d (km offshore):
-
-- Continental **shelf** from 0 down to `shelf_depth` (default −130 m) over
-  `shelf_width_km` (default 80 km, optionally varied with noise).
-- **Slope** down to `abyss_depth` (default −4000 m) over `slope_width_km`.
-- Abyssal plain with low-amplitude 3D noise.
-- Optional `ocean_depth` painted map added on top.
+1. Painted ocean classes give a depth per cell. It is smoothed on the sphere
+   over sea cells only (`ocean.sigma_km`), the same way as land (§7.2).
+2. A **shelf ramp** r(d) from the signed coast distance d (km offshore):
+   0 m at the coast, down to `shelf_depth` (default −130 m) over
+   `shelf_width_km` (default 80 km), then steeply down over `slope_width_km`.
+3. Final depth = `max(painted, r(d))`. Near the coast the ramp keeps water
+   shallow. Further out the painted depth takes over. If you paint a shelf
+   class, it shows wherever it is shallower than the ramp.
+4. Low-amplitude 3D noise on the deep floor.
 
 ### 9.2 Marine deposition
 
@@ -374,13 +392,35 @@ levels   = "paint/levels.png"
 coast    = "paint/coast_16k.png"   # optional
 rainfall = "paint/rain.png"        # optional, likewise hardness/uplift/protect/rivers/lakes
 
-[input.classes]                    # pixel value -> class
-0   = "ocean"
-85  = "lowland"
-170 = "midland"
-255 = "highland"
+[[input.classes]]                  # any number; pixel value -> class
+value = 0
+name = "deep"
+kind = "ocean"
+depth_m = -4500
+
+[[input.classes]]
+value = 40
+name = "shelf"
+kind = "ocean"
+depth_m = -150
+
+[[input.classes]]
+value = 85
+name = "lowland"
+kind = "land"
+
+[[input.classes]]
+value = 170
+name = "midland"
+kind = "land"
+
+[[input.classes]]
+value = 255
+name = "highland"
+kind = "land"
 
 [prep]
+# classes listed above; base values per class:
 base       = { lowland = 0.15, midland = 0.45, highland = 1.0 }
 sigma_km   = 120
 coast_ramp_km = 40
@@ -398,10 +438,10 @@ iterations = { 512 = 200, 2048 = 100 }
 hardness_strength = 0.8
 
 [ocean]
+sigma_km = 150
 shelf_depth_m = -130
 shelf_width_km = 80
 slope_width_km = 150
-abyss_depth_m = -4000
 marine_diffusion_km = 100
 
 [coast]
@@ -441,9 +481,29 @@ requested.
 Cube → equirect resampling uses bicubic interpolation that handles face edges.
 Rows near the poles are supersampled so they aren't blocky.
 
-Blender notes go in the README: displacing a UV sphere with the equirect EXR,
-using the cube faces on a quad-sphere mesh, and recommended vertical
-exaggeration.
+### 11.1 Blender setup (recommended)
+
+Blender is the globe viewer and renderer. Claude will usually drive it
+through the Blender MCP, but the tool also writes a plain script
+(`blender_globe.py`), so the scene can be rebuilt without Claude.
+
+- **Blender 5.0+, Cycles.** Adaptive subdivision is no longer experimental
+  in 5.0, and it has an object-space edge-length option
+  ([5.0 Cycles notes][b50]).
+- **Mesh**: UV sphere, smooth-shaded, radius 1 (scaled units).
+- **Render displacement**: Subdivision Surface modifier with adaptive
+  subdivision, plus a material Displacement node fed by `height_m.exr`
+  (equirect, Non-Color, Linear interpolation), displacement mode
+  "Displacement only".
+- **Viewport preview**: a lower-res `height_m.exr` (2K) on a Displace
+  modifier, so the scene stays responsive.
+- **Vertical exaggeration**: real relief is tiny next to the radius
+  (~9 km / 6371 km ≈ 0.14%). The script sets the displacement scale from
+  `planet.radius_km` and an `exaggeration` value (default 20×).
+- **Shading starter**: colour ramp on height plus the flow and erosion masks
+  (rivers, valley floors), and a sea-level sphere for water.
+- **Later (v4)**: quad-sphere mesh using the cube-face EXRs, which avoids
+  the UV sphere's pinching at the poles.
 
 ## 12. Performance targets
 
@@ -493,24 +553,20 @@ Reference hardware: 8+ core CPU with 32 GB RAM; for v2+, one NVIDIA GPU with
 | **v1 (MVP)** | Everything in §2.1. Built in steps: (a) cube-sphere grid, resampling, seam tests; (b) prep: coast distance, smoothing, curve, noise, EXR/PNG export, which already gives a usable smoothed globe; (c) CPU erosion + cascade to 8K, flow/erosion masks, previews. |
 | v2 | GPU port (FastFlow-style routing) for speed. Sediment deposition + deposition mask. Lake mask. Checkpoint resume. Evaluate the Tzathas-style analytical option. |
 | v3 | Optional painted maps (hardness, rainfall, uplift, protect, forced rivers/lakes), separate high-res coast mask, painted bathymetry, marine fans, delta mode. |
-| v4 | 16K support, memory tiling if needed, cube-face export, Blender guide and example scene. |
+| v4 | 16K support, memory tiling if needed, cube-face export with a quad-sphere Blender scene. |
 | Later | Aspirational directions in §17. |
 
 ## 16. Open questions
 
 1. ~~Input projection?~~ **Decided: equirectangular.**
-2. Would you also paint ocean levels (shelf / deep), or should the generated
-   shelf be enough?
-3. How many height levels at most: exactly 3, or should any number be
-   supported?
+2. ~~Ocean depths?~~ **Decided: painted, as ocean levels in the `levels` map.**
+3. ~~Number of levels?~~ **Decided: any number.**
 4. Do you want rivers to be visible water in the height map (a flat water
    surface in wide rivers), or only as valleys plus a mask?
-5. Is "uplift keeps mountains as painted" the right feel, or should erosion
-   be allowed to wear ranges down a lot (an "age" slider)?
-6. Which Blender setup do you use for rendering (displacement modifier,
-   adaptive subdivision in Cycles, or something else)? This sets cube-face
-   orientation and file format details.
-7. Interest in a later GUI/globe viewer, so the core API can plan for it?
+5. ~~Mountain height?~~ **Decided: stay about as painted.** An age slider
+   can come later.
+6. ~~Blender setup?~~ **Decided: recommended setup in §11.1.**
+7. ~~GUI?~~ **Decided: Blender is the viewer.**
 
 ## 17. Future directions (aspirational, not scheduled)
 
@@ -557,6 +613,7 @@ Work out the terrain from plate history instead of painting it:
 - Cordonnier et al. (2016), *Large Scale Terrain Generation from Tectonic Uplift and Fluvial Erosion*, CGF 35(2). https://diglib.eg.org/handle/10.1111/cgf12820
 - Schott, Paris, Fournier, Guérin & Galin (2023), *Large-scale Terrain Authoring through Interactive Erosion Simulation*, ACM TOG 42(5). https://h-schott.github.io/p/uplift — code: https://github.com/H-Schott/StreamPowerErosion
 - Tzathas, Gailleton, Steer & Cordonnier (2024), *Physically-based Analytical Erosion for fast Terrain Generation*, CGF 43(2). https://diglib.eg.org/handle/10.1111/cgf15033
+- Blender 5.0 Cycles release notes (adaptive subdivision). https://developer.blender.org/docs/release_notes/5.0/cycles/
 - Jain, Kerbl, Gain, Finley & Cordonnier (2024), *FastFlow: GPU Acceleration of Flow and Depression Routing for Landscape Simulation*, CGF 43(7). https://diglib.eg.org/handle/10.1111/cgf15243
 
 [ronchi]: https://doi.org/10.1006/jcph.1996.0047
@@ -566,3 +623,4 @@ Work out the terrain from plate history instead of painting it:
 [schott]: https://h-schott.github.io/p/uplift
 [tzathas]: https://diglib.eg.org/handle/10.1111/cgf15033
 [fastflow]: https://diglib.eg.org/handle/10.1111/cgf15243
+[b50]: https://developer.blender.org/docs/release_notes/5.0/cycles/
