@@ -18,3 +18,11 @@ sim_snaps/
 # Misc files.
 .DS_Store
 *.swp
+
+# globerode
+runs/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
