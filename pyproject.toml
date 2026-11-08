@@ -58,6 +58,8 @@ python_version = "3.13"
 strict = true
 plugins = ["pydantic.mypy"]
 files = ["src", "tests", "scripts"]
+# The Blender globe template runs inside Blender (untyped bpy); checked by its own tests.
+exclude = ["src/globerode/blender/globe_script.py"]
 
 [[tool.mypy.overrides]]
 module = ["numba.*", "scipy.*", "tifffile.*", "OpenEXR.*", "bpy.*"]

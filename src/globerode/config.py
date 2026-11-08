@@ -194,6 +194,10 @@ class ReportConfig(_Strict):
     )
 
 
+class BlenderConfig(_Strict):
+    exaggeration: float = Field(20.0, gt=0, description="vertical exaggeration in renders")
+
+
 class Config(_Strict):
     name: str = "world"
     planet: PlanetConfig = PlanetConfig()
@@ -205,6 +209,7 @@ class Config(_Strict):
     coast: CoastConfig = CoastConfig()
     output: OutputConfig = OutputConfig()
     report: ReportConfig = ReportConfig()
+    blender: BlenderConfig = BlenderConfig()
 
     @model_validator(mode="after")
     def _iterations_match_levels(self) -> Config:

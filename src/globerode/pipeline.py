@@ -21,11 +21,13 @@ from typing import Any
 import numpy as np
 
 from globerode import __version__
+from globerode.blender import write_globe_script
 from globerode.config import Config, dump_toml
 from globerode.erode.cascade import run_cascade
 from globerode.export import relock_coast, write_heights, write_mask_png8, write_mask_png16
 from globerode.grid import Grid
 from globerode.prep import prep_fields
+from globerode.report.metrics import river_threshold_m2
 from globerode.report.report import STATE_FILE, RunState, build_report, write_previews, write_report
 from globerode.resample import (
     cube_to_equirect,
@@ -213,6 +215,21 @@ def run(cfg: Config, run_dir: Path, quiet: bool = False) -> RunResult:
         write_report(run_dir, report, previews)
         log.event("report", status=report["status"])
 
+    land_px_max = float(height_eq[land_out].max()) if land_out.any() else 1.0
+    if "exr32" not in cfg.output.formats:
+        log.event("blender script skipped: needs exr32 in output.formats")
+    else:
+        write_globe_script(
+            run_dir,
+            {
+                "height_exr": "outputs/height_m.exr",
+                "rivers_png": "outputs/mask_rivers.png" if routing is not None else None,
+                "radius_m": cfg.radius_m,
+                "exaggeration": cfg.blender.exaggeration,
+                "max_height_m": land_px_max,
+            },
+        )
+
     total = round(time.perf_counter() - t_start, 3)
     land_px = height_eq[land_out]
     sea_px = height_eq[~land_out]
@@ -269,7 +286,7 @@ def _write_erosion_masks(
     lo = float(np.log10(cell_min))
     hi = float(log_a[land].max()) if land.any() else lo + 1.0
     flow = np.where(land_out, (log_a_eq - lo) / max(hi - lo, 1e-9), 0.0)
-    thresh = cfg.erode.river_threshold_km2 * 1e6
+    thresh = river_threshold_m2(grid, cfg.erode.river_threshold_km2)
     rivers = land_out & (log_a_eq >= np.log10(thresh))
     eroded = np.maximum(fields["h_init"] - fields["height"], 0.0) * land
     eroded_eq = cube_to_equirect(grid, eroded, width)
@@ -278,7 +295,7 @@ def _write_erosion_masks(
     info.update(
         {
             "flow": {"log10_area_m2_range": [lo, hi]},
-            "rivers": {"threshold_km2": cfg.erode.river_threshold_km2},
+            "rivers": {"threshold_km2": thresh / 1e6},
             "erosion": {"max_depth_m": emax},
         }
     )

@@ -90,6 +90,7 @@ def build_report(
     # rough terrain (checked visually, see decision D17), not a seam.
     if (
         seam["status"] in ("fail", "warn")
+        and 0 < seam["value"] < math.inf
         and abs(math.log(seam["value"])) < SEAM_NOISE_SE * m["seams"]["log_se"]
     ):
         seam["status"] = "pass"
@@ -111,7 +112,7 @@ def build_report(
             _check("drainage", m["drainage"]["fraction_draining"], (1.0, 1.0), "drainage" in hard)
         )
         dist = M.receiver_distance_m(grid, state.receiver)
-        channel = land & (state.area >= cfg.erode.river_threshold_km2 * 1e6)
+        channel = land & (state.area >= M.river_threshold_m2(grid, cfg.erode.river_threshold_km2))
         m["hack"] = M.hack_exponent(state.receiver, state.stack, state.area, dist, land, channel)
         m["horton"] = M.horton_bifurcation(state.receiver, state.stack, land, channel)
         m["drainage_density_per_km"] = M.drainage_density_per_km(

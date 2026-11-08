@@ -46,6 +46,16 @@ def receiver_distance_m(grid: Grid, receiver: np.ndarray) -> np.ndarray:
     return out
 
 
+MIN_RIVER_CELLS = 10  # a river drains at least this many cells' worth of area
+
+
+def river_threshold_m2(grid: Grid, threshold_km2: float) -> float:
+    """Drainage area that makes a cell a river: the configured threshold, but never
+    less than MIN_RIVER_CELLS mean cells (otherwise every cell of a coarse grid is a river)."""
+    mean_cell = 4 * math.pi * grid.radius_m**2 / grid.ncells
+    return max(threshold_km2 * 1e6, MIN_RIVER_CELLS * mean_cell)
+
+
 # --- correctness ----------------------------------------------------------------------------
 
 
@@ -87,35 +97,39 @@ def _seam_pairs(h: np.ndarray, land: np.ndarray, n: int, radius_m: float) -> np.
     """For each step across a face edge, the gradient across it and the gradient
     of the next step back inside the face along the same line.
 
-    Returns (ncells * 4, 2): (cross, inside); unused rows are -1.
+    Only border cells are visited, so memory is O(N): returns (6 * 4 * n, 2)
+    rows of (cross, inside); unused rows are -1.
     """
-    ncells = h.shape[0]
-    out = np.full((ncells * 4, 2), -1.0)
-    for c in prange(ncells):
+    out = np.full((6 * 4 * n, 2), -1.0)
+    for row in prange(6 * 4 * n):
+        f = row // (4 * n)
+        k = (row // n) % 4  # edge: W, E, S, N
+        t = row % n
+        if k == 0:
+            i, j = t, 0
+        elif k == 1:
+            i, j = t, n - 1
+        elif k == 2:
+            i, j = 0, t
+        else:
+            i, j = n - 1, t
+        c = f * n * n + i * n + j
         if not land[c]:
             continue
-        f, i, j = cell_fij(c, n)
+        b = neighbour(f, i, j, NEIGHBOUR_OFFSETS[k, 0], NEIGHBOUR_OFFSETS[k, 1], n, EDGE_TABLE)
+        fb, ib, jb = cell_fij(b, n)
+        if fb == f or not land[b]:
+            continue
+        k2 = k ^ 1  # opposite direction: back into the face
+        o = neighbour(f, i, j, NEIGHBOUR_OFFSETS[k2, 0], NEIGHBOUR_OFFSETS[k2, 1], n, EDGE_TABLE)
+        fo, io, jo = cell_fij(o, n)
+        if fo != f or not land[o]:
+            continue
         p = cell_xyz(f, i, j, n, FACE_FRAMES)
-        for k in range(4):
-            b = neighbour(f, i, j, NEIGHBOUR_OFFSETS[k, 0], NEIGHBOUR_OFFSETS[k, 1], n, EDGE_TABLE)
-            fb, ib, jb = cell_fij(b, n)
-            if fb == f or not land[b]:
-                continue
-            k2 = k ^ 1  # opposite direction: W<->E, S<->N
-            o = neighbour(
-                f, i, j, NEIGHBOUR_OFFSETS[k2, 0], NEIGHBOUR_OFFSETS[k2, 1], n, EDGE_TABLE
-            )
-            fo, io, jo = cell_fij(o, n)
-            if fo != f or not land[o]:
-                continue
-            q = cell_xyz(fb, ib, jb, n, FACE_FRAMES)
-            r = cell_xyz(fo, io, jo, n, FACE_FRAMES)
-            out[c * 4 + k, 0] = abs(h[b] - h[c]) / (
-                arc(p[0], p[1], p[2], q[0], q[1], q[2]) * radius_m
-            )
-            out[c * 4 + k, 1] = abs(h[c] - h[o]) / (
-                arc(p[0], p[1], p[2], r[0], r[1], r[2]) * radius_m
-            )
+        q = cell_xyz(fb, ib, jb, n, FACE_FRAMES)
+        r = cell_xyz(fo, io, jo, n, FACE_FRAMES)
+        out[row, 0] = abs(h[b] - h[c]) / (arc(p[0], p[1], p[2], q[0], q[1], q[2]) * radius_m)
+        out[row, 1] = abs(h[c] - h[o]) / (arc(p[0], p[1], p[2], r[0], r[1], r[2]) * radius_m)
     return out
 
 
@@ -131,9 +145,15 @@ def seam_continuity(grid: Grid, height: np.ndarray, land: np.ndarray) -> dict[st
     g = _seam_pairs(np.ascontiguousarray(height, np.float64), land, grid.n, grid.radius_m)
     g = g[g[:, 0] >= 0]
     nan = float("nan")
-    if g.shape[0] < 10 or g[:, 1].mean() == 0 or g[:, 0].mean() == 0:
+    if g.shape[0] < 10:
         return {"ratio": nan, "log_se": nan, "pairs": int(g.shape[0])}
     x, y = g[:, 0], g[:, 1]
+    if y.mean() == 0:
+        # Flat inside the faces: seamless only if also flat across the edges.
+        ratio = 1.0 if x.mean() == 0 else float("inf")
+        return {"ratio": ratio, "log_se": 0.0, "pairs": int(g.shape[0])}
+    if x.mean() == 0:
+        return {"ratio": 0.0, "log_se": 0.0, "pairs": int(g.shape[0])}
     mx, my = x.mean(), y.mean()
     cov = np.cov(x, y)
     n = x.size
