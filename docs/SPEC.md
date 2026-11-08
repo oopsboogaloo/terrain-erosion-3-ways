@@ -73,6 +73,7 @@ cube-face export · lake mask · 16K · checkpoint resume · Blender guide.
 
 | Topic | Decision |
 |---|---|
+| Input projection | Equirectangular (plate carrée) only. |
 | Hardware | NVIDIA GPU (CUDA) target. **MVP runs on CPU**; GPU port after. |
 | Resolution | 8192×4096 equirectangular output first; design must scale to 16384×8192. |
 | Interface | CLI + config file + preview images. |
@@ -165,9 +166,8 @@ All raster inputs are equirectangular images. Size can be anything with a
 | `rivers` | no | Black/white lines | Forced river courses. Flow is routed along the line and the bed carved (§8.5). |
 | `lakes` | no | Black/white areas | Forced lakes with a flat surface (§8.5). |
 
-Later options: other cylindrical projections for input (Mercator up to a
-latitude limit, Lambert cylindrical equal-area), and vector coastlines
-(SVG/GeoJSON).
+Inputs are always equirectangular (decided). A later option is vector
+coastlines (SVG/GeoJSON).
 
 ### 6.1 Resampling input onto the cube sphere
 
@@ -498,8 +498,7 @@ Reference hardware: 8+ core CPU with 32 GB RAM; for v2+, one NVIDIA GPU with
 
 ## 16. Open questions
 
-1. Are your painted maps plate carrée (equirectangular), or another
-   cylindrical projection such as Mercator?
+1. ~~Input projection?~~ **Decided: equirectangular.**
 2. Would you also paint ocean levels (shelf / deep), or should the generated
    shelf be enough?
 3. How many height levels at most: exactly 3, or should any number be
