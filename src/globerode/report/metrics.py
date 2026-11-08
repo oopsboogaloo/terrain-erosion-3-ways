@@ -97,35 +97,39 @@ def _seam_pairs(h: np.ndarray, land: np.ndarray, n: int, radius_m: float) -> np.
     """For each step across a face edge, the gradient across it and the gradient
     of the next step back inside the face along the same line.
 
-    Returns (ncells * 4, 2): (cross, inside); unused rows are -1.
+    Only border cells are visited, so memory is O(N): returns (6 * 4 * n, 2)
+    rows of (cross, inside); unused rows are -1.
     """
-    ncells = h.shape[0]
-    out = np.full((ncells * 4, 2), -1.0)
-    for c in prange(ncells):
+    out = np.full((6 * 4 * n, 2), -1.0)
+    for row in prange(6 * 4 * n):
+        f = row // (4 * n)
+        k = (row // n) % 4  # edge: W, E, S, N
+        t = row % n
+        if k == 0:
+            i, j = t, 0
+        elif k == 1:
+            i, j = t, n - 1
+        elif k == 2:
+            i, j = 0, t
+        else:
+            i, j = n - 1, t
+        c = f * n * n + i * n + j
         if not land[c]:
             continue
-        f, i, j = cell_fij(c, n)
+        b = neighbour(f, i, j, NEIGHBOUR_OFFSETS[k, 0], NEIGHBOUR_OFFSETS[k, 1], n, EDGE_TABLE)
+        fb, ib, jb = cell_fij(b, n)
+        if fb == f or not land[b]:
+            continue
+        k2 = k ^ 1  # opposite direction: back into the face
+        o = neighbour(f, i, j, NEIGHBOUR_OFFSETS[k2, 0], NEIGHBOUR_OFFSETS[k2, 1], n, EDGE_TABLE)
+        fo, io, jo = cell_fij(o, n)
+        if fo != f or not land[o]:
+            continue
         p = cell_xyz(f, i, j, n, FACE_FRAMES)
-        for k in range(4):
-            b = neighbour(f, i, j, NEIGHBOUR_OFFSETS[k, 0], NEIGHBOUR_OFFSETS[k, 1], n, EDGE_TABLE)
-            fb, ib, jb = cell_fij(b, n)
-            if fb == f or not land[b]:
-                continue
-            k2 = k ^ 1  # opposite direction: W<->E, S<->N
-            o = neighbour(
-                f, i, j, NEIGHBOUR_OFFSETS[k2, 0], NEIGHBOUR_OFFSETS[k2, 1], n, EDGE_TABLE
-            )
-            fo, io, jo = cell_fij(o, n)
-            if fo != f or not land[o]:
-                continue
-            q = cell_xyz(fb, ib, jb, n, FACE_FRAMES)
-            r = cell_xyz(fo, io, jo, n, FACE_FRAMES)
-            out[c * 4 + k, 0] = abs(h[b] - h[c]) / (
-                arc(p[0], p[1], p[2], q[0], q[1], q[2]) * radius_m
-            )
-            out[c * 4 + k, 1] = abs(h[c] - h[o]) / (
-                arc(p[0], p[1], p[2], r[0], r[1], r[2]) * radius_m
-            )
+        q = cell_xyz(fb, ib, jb, n, FACE_FRAMES)
+        r = cell_xyz(fo, io, jo, n, FACE_FRAMES)
+        out[row, 0] = abs(h[b] - h[c]) / (arc(p[0], p[1], p[2], q[0], q[1], q[2]) * radius_m)
+        out[row, 1] = abs(h[c] - h[o]) / (arc(p[0], p[1], p[2], r[0], r[1], r[2]) * radius_m)
     return out
 
 
