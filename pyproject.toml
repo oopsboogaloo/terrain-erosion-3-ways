@@ -1,0 +1,63 @@
+[project]
+name = "globerode"
+version = "0.1.0"
+description = "Spherical terrain erosion for world maps: painted equirect levels in, eroded planetary height maps out."
+readme = "docs/SPEC.md"
+license = "MIT"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "numpy>=2.3",
+    "scipy>=1.16",
+    "numba>=0.62",
+    "pydantic>=2.11",
+    "pillow>=11.3",
+    "tifffile>=2025.6",
+    "openexr>=3.4",
+]
+
+[project.optional-dependencies]
+blender = ["bpy>=5.0"]
+
+[project.scripts]
+globerode = "globerode.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4",
+    "hypothesis>=6.135",
+    "ruff>=0.12",
+    "mypy>=1.17",
+]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/globerode"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "slow: long-running tests (full-size runs, Blender renders); excluded in CI",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["src", "tests"]
+# Only lint the package and tests; the legacy root scripts are reference only.
+include = ["src/**/*.py", "tests/**/*.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "NPY", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+files = ["src", "tests"]
+
+[[tool.mypy.overrides]]
+module = ["numba.*", "scipy.*", "tifffile.*", "OpenEXR.*", "bpy.*"]
+ignore_missing_imports = true
