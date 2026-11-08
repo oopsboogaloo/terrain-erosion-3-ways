@@ -36,17 +36,20 @@ def main() -> None:
         dist = M.receiver_distance_m(grid, r.receiver)
         ch = land & (r.area >= M.river_threshold_m2(grid, cfg.erode.river_threshold_km2))
         h, h0 = f["height"], f["h_init"]
+        mean_ratio = float(h[land].mean() / h0[land].mean())
+        rb = M.horton_bifurcation(r.receiver, r.stack, land, ch)["rb"]
+        horton_rb = float(rb) if isinstance(rb, (int, float)) else float("nan")
         res = {
             "k": k,
             "set": cand,
             "seconds": round(time.perf_counter() - t0, 1),
-            "mean_ratio": round(float(h[land].mean() / h0[land].mean()), 3),
+            "mean_ratio": round(mean_ratio, 3),
             "max_ratio": round(float(h[land].max() / h0[land].max()), 3),
             "relief_p90_p10_m": round(
                 float(np.percentile(h[land], 90) - np.percentile(h[land], 10)), 1
             ),
             "hack": round(M.hack_exponent(r.receiver, r.stack, r.area, dist, land, ch)["h"], 3),
-            "horton": round(float(M.horton_bifurcation(r.receiver, r.stack, land, ch)["rb"]), 3),
+            "horton": round(horton_rb, 3),
             "river_frac": round(float(ch.sum() / land.sum()), 4),
         }
         results.append(res)
@@ -54,7 +57,7 @@ def main() -> None:
         eq = cube_to_equirect(grid, np.where(land, h, -100.0), 2048)
         crop = eq[160:560, 1000:1500]  # big continent + ridge
         sh = hillshade_equirect(eq, cfg.radius_m, exaggeration=8)[160:560, 1000:1500]
-        rgb = tint(crop * max(1.0, 1.0 / max(res["mean_ratio"], 0.1))) * (0.3 + 0.7 * sh[..., None])
+        rgb = tint(crop * max(1.0, 1.0 / max(mean_ratio, 0.1))) * (0.3 + 0.7 * sh[..., None])
         Image.fromarray((np.clip(rgb, 0, 1) * 255).astype(np.uint8)).save(out / f"{k}.png")
     (out / "results.json").write_text(json.dumps(results, indent=2))
 
