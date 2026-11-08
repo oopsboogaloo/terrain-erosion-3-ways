@@ -328,7 +328,18 @@ From the signed coast distance d (km offshore):
 
 - `locked` (default): after every step, land cells are clamped to ≥
   `min_land_height` (e.g. +1 m) and sea cells to ≤ `max_sea_height`
-  (e.g. −1 m). The output land mask exactly matches the input coast.
+  (e.g. −1 m) on the simulation grid.
+  - Clamping simulation cells is not enough on its own: islands or channels
+    smaller than a cell can be lost when resampling, and interpolating
+    height to the output map can shift where it crosses 0 m. So the
+    **original coast mask is kept** and enforced again **at output
+    resolution, after** cube → equirect resampling. Each output pixel's
+    land/sea state comes from the input mask resampled to the output grid
+    (threshold 0.5), and its height is clamped to the land or sea range to
+    match. Islands smaller than a simulation cell survive as small
+    low-lying land.
+  - Cube-face exports get the same treatment, using the mask sampled at
+    each face pixel.
 - `deltas`: sea cells near river mouths may rise above 0 m through
   deposition, within `delta_max_km` of the original coast. Elsewhere the
   coast stays locked.
@@ -451,8 +462,11 @@ Reference hardware: 8+ core CPU with 32 GB RAM; for v2+, one NVIDIA GPU with
    (automatic check on height gradients along seams).
 2. **Polar consistency**: the same test continent placed at the equator and
    at a pole gives statistically matching results (river density, relief).
-3. **Coast lock**: in `locked` mode, final land mask equals input land mask
-   exactly.
+3. **Coast lock**: in `locked` mode, the exported land mask (height > 0)
+   equals the input coast mask resampled to the output grid (threshold 0.5),
+   pixel for pixel. If the input is higher-res than the output, the
+   comparison is made at output resolution; if lower-res, the input is
+   upsampled bilinearly first.
 4. **Drainage**: every land cell drains to the sea or a painted lake.
 5. **Determinism**: same config + seed gives an identical result.
 6. **Smoothing scale**: a σ = 100 km blur measured on the output has the same
