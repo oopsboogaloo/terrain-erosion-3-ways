@@ -63,7 +63,7 @@ def test_run_writes_all_outputs_with_exact_coast(tmp_path: Path, world: str) -> 
 
     meta = json.loads((run_dir / "metadata.json").read_text())
     assert meta["n"] == WIDTH // 4
-    assert set(meta["timings_s"]) >= {"resample", "erode", "export", "previews", "total"}
+    assert set(meta["timings_s"]) >= {"resample", "erode", "export", "report", "total"}
 
 
 def test_stdout_is_one_json_summary(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

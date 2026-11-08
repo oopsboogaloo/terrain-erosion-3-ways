@@ -26,7 +26,7 @@ from globerode.erode.cascade import run_cascade
 from globerode.export import relock_coast, write_heights, write_mask_png8, write_mask_png16
 from globerode.grid import Grid
 from globerode.prep import prep_fields
-from globerode.report.previews import write_hillshade_preview
+from globerode.report.report import STATE_FILE, RunState, build_report, write_previews, write_report
 from globerode.resample import (
     cube_to_equirect,
     equirect_majority,
@@ -184,15 +184,34 @@ def run(cfg: Config, run_dir: Path, quiet: bool = False) -> RunResult:
         height_eq = relock_coast(height_eq, land_out, cfg.coast)
         written = write_heights(out_dir, height_eq, cfg.output.formats, cfg.output.png_range_m)
         written.append(write_mask_png8(out_dir / "mask_land.png", land_out))
+        rivers_eq: np.ndarray | None = None
+        erosion_eq: np.ndarray | None = None
         if routing is not None:
-            written += _write_erosion_masks(
+            paths, rivers_eq, erosion_eq = _write_erosion_masks(
                 grid, fields, routing.area, land_out, cfg, out_dir, mask_info
             )
+            written += paths
 
-    with log.stage("previews"):
-        prev_dir = run_dir / "previews"
-        prev_dir.mkdir(exist_ok=True)
-        write_hillshade_preview(prev_dir / "hillshade_equirect.png", height_eq, cfg.radius_m)
+    h_init = fields["h_init"] if "h_init" in fields else fields["height"]
+    state = RunState(
+        grid=grid,
+        height=fields["height"],
+        h_init=h_init,
+        land=fields["land"],
+        receiver=routing.receiver if routing is not None else None,
+        stack=routing.stack if routing is not None else None,
+        area=routing.area if routing is not None else None,
+    )
+    if cfg.output.save_state:
+        state.save(run_dir / STATE_FILE)
+
+    with log.stage("report"):
+        report = build_report(state, height_eq, land_out, cfg)
+        previews = write_previews(
+            run_dir / "previews", state, height_eq, rivers_eq, erosion_eq, cfg
+        )
+        write_report(run_dir, report, previews)
+        log.event("report", status=report["status"])
 
     total = round(time.perf_counter() - t_start, 3)
     land_px = height_eq[land_out]
@@ -218,7 +237,9 @@ def run(cfg: Config, run_dir: Path, quiet: bool = False) -> RunResult:
     }
     (run_dir / "metadata.json").write_text(json.dumps(metadata, indent=2) + "\n")
     summary = {
-        "ok": True,
+        "ok": report["status"] != "fail",
+        "report_status": report["status"],
+        "checks": {c["name"]: c["status"] for c in report["checks"]},
         "run_dir": str(run_dir),
         "outputs": [str(p.relative_to(run_dir)) for p in written],
         "height_range_m": metadata["height_range_m"],
@@ -238,7 +259,7 @@ def _write_erosion_masks(
     cfg: Config,
     out_dir: Path,
     info: dict[str, Any],
-) -> list[Path]:
+) -> tuple[list[Path], np.ndarray, np.ndarray]:
     """Flow (log drainage area), rivers (area threshold) and erosion depth masks."""
     width = cfg.resolution.output_width
     land = fields["land"]
@@ -261,11 +282,12 @@ def _write_erosion_masks(
             "erosion": {"max_depth_m": emax},
         }
     )
-    return [
+    paths = [
         write_mask_png16(out_dir / "mask_flow.png", flow),
         write_mask_png8(out_dir / "mask_rivers.png", rivers),
         write_mask_png16(out_dir / "mask_erosion.png", erosion),
     ]
+    return paths, rivers, erosion
 
 
 def _peak_rss_gb() -> float | None:
