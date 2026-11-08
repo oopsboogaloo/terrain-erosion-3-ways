@@ -250,8 +250,9 @@ before running, and refuses to start if it's over the available RAM (spec §3.4)
 ```
 1. routing:  Priority-Flood+ε on h  →  h_filled, stack (order), receivers
 2. h ← h_filled                       (fill pits: lakes fill instantly)
-3. drainage area A: accumulate cell areas down the tree (reverse stack order)
-4. stream power: Braun–Willett implicit update along the stack
+3. drainage area A: accumulate cell areas (× rainfall) down the tree (reverse stack order)
+4. stream power: Braun–Willett implicit update along the stack (K varies, §7.10)
+4b. landslide slope limit along the stack (§7.10)
 5. diffusion: hillslope diffusion step
 6. clamp: land cells ≥ min_land_height (coast lock)
 7. accumulate erosion (h_before − h_after, if positive) into `eroded`
@@ -370,6 +371,26 @@ Tuning happens on test worlds at preview size, against the report metrics
   diffusion stencil, clamps), never for reductions whose float sum order
   could vary. Sums (drainage area, totals) are serial.
 - Same config + seed ⇒ byte-identical output, checked by a test.
+
+### 7.10 Varied terrain **[D26–D28]**
+
+Uniform parameters make every slope erode the same way, which reads as
+"too neat". Three additions:
+
+- **Varied erodibility, rainfall and uplift (D26).** Each is a per-cell
+  factor `contrast ** (v / 2)`, `v = tanh(sharpness · z)`, z = unit-variance
+  warped fBm with its own seed (offset from `prep.noise.seed`). The factor
+  lies in 1/√contrast … √contrast with geometric mean ≈ 1. K = k · erodibility;
+  rainfall weights each cell's area in the drainage sum, so A becomes
+  discharge; uplift multiplies the painted-height uplift. Octaves finer than
+  4 cells are dropped per level, and the field is sampled at fixed positions,
+  so every cascade level sees the same field.
+- **Landslide slope limit (D27).** After stream power, in stack order, each
+  land cell is lowered to at most `tan(max_slope) · d` above every neighbour
+  already processed (sea counts as 0 m). Material removed is assumed carried
+  away. The angle is at cell scale: ~8° at 8K (4.9 km cells), steeper at 16K.
+- **Restore rounds (D28).** Local restore + peak cap run three times so
+  hard-rock highs clipped by the cap don't lower the regional mean.
 
 ## 8. Ocean
 

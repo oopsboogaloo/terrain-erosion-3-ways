@@ -162,10 +162,13 @@ def route(
     height_m: np.ndarray,
     land: np.ndarray,
     epsilon_m: float = DEFAULT_EPSILON_M,
+    rainfall: np.ndarray | None = None,
 ) -> Routing:
     """Fill pits and route flow over land cells to the sea.
 
     ``height_m`` should be positive on land (the coast clamp guarantees it).
+    ``rainfall`` (optional, per cell, ~1 on average) weights each cell's
+    area, so ``area`` becomes rain-weighted drainage area (discharge, D26).
     Raises ValueError if some land cannot reach the sea (e.g. no sea at all).
     """
     h = np.ascontiguousarray(height_m, dtype=np.float64)
@@ -184,5 +187,8 @@ def route(
         )
     stack = stack_full[:count].copy()
     _steepest_receivers(filled, is_land, receiver, grid.n)
-    area = _drainage_area(stack, receiver, is_land, grid.cell_area_m2.astype(np.float64))
+    cell_area = grid.cell_area_m2.astype(np.float64)
+    if rainfall is not None:
+        cell_area = cell_area * np.asarray(rainfall, dtype=np.float64)
+    area = _drainage_area(stack, receiver, is_land, cell_area)
     return Routing(filled=filled, receiver=receiver, stack=stack, area=area)

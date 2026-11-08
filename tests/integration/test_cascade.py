@@ -7,6 +7,7 @@ import pytest
 
 from globerode.config import Config, load_config
 from globerode.erode.cascade import run_cascade
+from globerode.erode.variation import erosion_fields
 from globerode.prep import prep_fields
 from globerode.resample import equirect_to_cube_classes, read_levels
 from globerode.testworlds import write_world
@@ -62,9 +63,9 @@ def test_erosion_changes_the_surface_and_every_land_cell_drains(tmp_path: Path) 
     rec = routing.receiver[land]
     assert (rec >= 0).all()
     outlets = np.nonzero(land)[0][~land[rec]]
-    assert routing.area[outlets].sum() == pytest.approx(
-        grid.cell_area_m2[land].sum(dtype=np.float64), rel=1e-9
-    )
+    rain = erosion_fields(grid, cfg)["rainfall"]  # area is rain-weighted (D26)
+    want = (grid.cell_area_m2.astype(np.float64) * rain)[land].sum()
+    assert routing.area[outlets].sum() == pytest.approx(want, rel=1e-9)
 
 
 def test_single_level_and_disabled_erosion(tmp_path: Path) -> None:

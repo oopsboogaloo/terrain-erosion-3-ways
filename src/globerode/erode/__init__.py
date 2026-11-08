@@ -4,8 +4,12 @@ One iteration:
   1. route (Priority-Flood+eps): filled heights, receivers, stack, area
   2. h <- filled (pits fill instantly, D4); accumulate lake fill
   3. stream power (Braun-Willett, n = 1) with uplift
-  4. hillslope diffusion
-  5. coast clamp: land >= min_land_height
+  4. landslide slope limit (optional, D27)
+  5. hillslope diffusion
+  6. coast clamp: land >= min_land_height
+
+Erodibility and rainfall may vary per cell (D26): K = k * erodibility, and
+drainage area is rain-weighted.
 """
 
 from __future__ import annotations
@@ -15,6 +19,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from globerode.erode.landslide import limit_slopes
 from globerode.erode.routing import Routing, route
 from globerode.erode.stream_power import stream_power_step
 from globerode.grid import Grid
@@ -30,6 +35,7 @@ class ErosionParams:
     iterations: int = 100
     epsilon_m: float = 1e-3
     min_land_height_m: float = 1.0
+    max_slope_deg: float = 0.0  # 0 = no slope limit
 
 
 @dataclass
@@ -47,25 +53,32 @@ def erode(
     params: ErosionParams,
     diffuser: Diffuser | None = None,
     progress: Callable[[int, int], None] | None = None,
+    erodibility: np.ndarray | None = None,
+    rainfall: np.ndarray | None = None,
 ) -> ErosionResult:
-    """Run ``params.iterations`` erosion iterations on land cells."""
+    """Run ``params.iterations`` erosion iterations on land cells.
+
+    ``erodibility`` and ``rainfall`` are optional per-cell factors (~1).
+    """
     is_land = np.ascontiguousarray(land, np.bool_)
     h = np.array(height_m, dtype=np.float64)
     h[is_land] = np.maximum(h[is_land], params.min_land_height_m)
-    erodibility = np.full(grid.ncells, params.k, dtype=np.float64)
+    k_field = np.full(grid.ncells, params.k, dtype=np.float64)
+    if erodibility is not None:
+        k_field *= erodibility
     lake = np.zeros(grid.ncells, dtype=np.float64)
     t_diff = params.kappa_m2_per_yr * params.dt_yr / grid.radius_m**2
     if params.kappa_m2_per_yr > 0 and diffuser is None:
         diffuser = Diffuser(grid)
 
     for it in range(params.iterations):
-        r = route(grid, h, is_land, params.epsilon_m)
+        r = route(grid, h, is_land, params.epsilon_m, rainfall)
         lake += r.filled - h
         h = r.filled
         stream_power_step(
             h,
             uplift_m_per_yr,
-            erodibility,
+            k_field,
             r.area,
             r.receiver,
             r.stack,
@@ -75,13 +88,14 @@ def erode(
             params.dt_yr,
             params.m,
         )
+        limit_slopes(grid, h, is_land, r.stack, params.max_slope_deg)
         if diffuser is not None:
             h = diffuser.diffuse(h, is_land, t_diff)
         h[is_land] = np.maximum(h[is_land], params.min_land_height_m)
         if progress is not None:
             progress(it + 1, params.iterations)
 
-    final = route(grid, h, is_land, params.epsilon_m)
+    final = route(grid, h, is_land, params.epsilon_m, rainfall)
     return ErosionResult(height=h, routing=final, lake_fill_m=lake)
 
 
