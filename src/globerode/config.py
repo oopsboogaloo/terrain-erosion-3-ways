@@ -140,7 +140,9 @@ class ErodeConfig(_Strict):
     k: float = Field(7e-7, gt=0, description="erodibility K (1/yr * m^(1-2m))")
     m: float = Field(0.5, gt=0, le=1)
     dt_yr: float = Field(1e5, gt=0)
-    uplift_m_per_yr: float = Field(1e-3, ge=0, description="uplift at the highest painted land")
+    uplift_per_km_m_per_yr: float = Field(
+        1.3e-4, ge=0, description="uplift per km of painted height (m/yr)"
+    )
     kappa_m2_per_yr: float = Field(1.0, ge=0, description="hillslope diffusivity")
     iterations: list[int] = Field(default_factory=lambda: [200, 100])
     epsilon_m: float = Field(1e-3, gt=0)

@@ -85,8 +85,14 @@ def erode(
     return ErosionResult(height=h, routing=final, lake_fill_m=lake)
 
 
-def uplift_from_height(h_init: np.ndarray, land: np.ndarray, u_max_m_per_yr: float) -> np.ndarray:
-    """Uplift proportional to the painted height (ranges stay roughly as painted)."""
-    top = float(h_init[land].max()) if land.any() else 1.0
-    out: np.ndarray = np.where(land, u_max_m_per_yr * np.maximum(h_init, 0.0) / max(top, 1.0), 0.0)
+def uplift_from_height(
+    h_init: np.ndarray, land: np.ndarray, u_per_km_m_per_yr: float
+) -> np.ndarray:
+    """Uplift proportional to the painted height in absolute terms (D23).
+
+    ``u_per_km_m_per_yr`` is the uplift for each km of painted height, so
+    steady-state relief scales with what was painted: a 2.7 km plateau gets
+    a third of the uplift of an 8 km ridge.
+    """
+    out: np.ndarray = np.where(land, u_per_km_m_per_yr * np.maximum(h_init, 0.0) / 1000.0, 0.0)
     return out

@@ -80,7 +80,7 @@ def run_cascade(cfg: Config, levels_img: np.ndarray, log: Log) -> tuple[Grid, Fi
             up = up + (nz.amp_m + nz.amp_per_m * np.maximum(up, 0.0)) * band
             start = np.where(land, up, h_init)
 
-        uplift = uplift_from_height(h_init, land, cfg.erode.uplift_m_per_yr)
+        uplift = uplift_from_height(h_init, land, cfg.erode.uplift_per_km_m_per_yr)
         params = _params(cfg, level)
         log("erosion level start", level=level, n=n, iterations=params.iterations)
 
