@@ -1,4 +1,4 @@
-# globerode — MVP build plan (draft v0.1)
+# globerode — MVP build plan (v0.2, review policy A)
 
 How the MVP in [SPEC.md](SPEC.md) §2 gets built, following
 [DESIGN.md](DESIGN.md). Ten steps. Each step is **one pull request** that
@@ -208,9 +208,11 @@ Blender render.
 Steps 3 and 4 both need only step 2. Step 8 needs only step 4's outputs,
 but is placed after 7 so renders can be checked alongside the reports.
 
-## 3. Review policy (your choice)
+## 3. Review policy
 
-Options for the implementation PRs:
+**Chosen: A** (user, 2026-11-08).
+
+Options considered for the implementation PRs:
 
 - **A (recommended)**: you review the milestone PRs (**4** walking
   skeleton, **5** smoothed globe, **6** erosion, **10** sign-off). Claude
