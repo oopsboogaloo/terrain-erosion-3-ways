@@ -3,6 +3,7 @@
 import math
 
 import numpy as np
+import pytest
 
 from globerode.config import Config, VariationConfig
 from globerode.erode import ErosionParams, erode
@@ -109,3 +110,36 @@ def test_partial_variation_table_keeps_field_defaults() -> None:
     assert cfg.erode.erodibility.sharpness == 1.5
     assert cfg.erode.rainfall.scale_km == 1500.0
     assert cfg.erode.uplift.contrast == 3.0
+
+
+def test_strata_factor_bands() -> None:
+    from globerode.config import StrataConfig
+    from globerode.erode.variation import strata_for
+
+    grid = Grid(8)
+    assert strata_for(grid, StrataConfig(contrast=1.0), 1) is None
+    st = strata_for(grid, StrataConfig(contrast=9.0, thickness_m=800.0, fold_amp_m=0.0), 1)
+    assert st is not None
+    h = np.linspace(0.0, 1600.0, 401)[:, None] * np.ones((1, grid.ncells))
+    f = np.stack([st.factor(row) for row in h])
+    assert f.min() == pytest.approx(1 / 3) and f.max() == pytest.approx(3.0)
+    assert np.allclose(st.factor(h[0] + 800.0), st.factor(h[0]))  # one band pair = 800 m
+    folded = strata_for(
+        grid, StrataConfig(contrast=9.0, fold_amp_m=1000.0, fold_scale_km=8000.0), 1
+    )
+    assert folded is not None and folded.fold_m.std() == pytest.approx(1000.0)
+
+
+def test_strata_change_erosion() -> None:
+    from globerode.config import StrataConfig
+    from globerode.erode.variation import strata_for
+
+    grid, h0, land = _cap(16, seed=4)
+    h0 = np.where(land, 2000.0 + h0, h0)
+    up = np.where(land, 1e-3, 0.0)
+    st = strata_for(grid, StrataConfig(contrast=8.0, thickness_m=300.0), 1)
+    p = ErosionParams(iterations=5)
+    a = erode(grid, h0, land, up, p, strata=st)
+    b = erode(grid, h0, land, up, p)
+    assert np.array_equal(a.height, erode(grid, h0, land, up, p, strata=st).height)
+    assert not np.allclose(a.height, b.height)

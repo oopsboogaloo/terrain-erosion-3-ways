@@ -18,8 +18,10 @@ def _cap_world(
     return grid, h, land
 
 
-def _check_invariants(grid: Grid, h: np.ndarray, land: np.ndarray, eps: float = 1e-3) -> None:
-    r = route(grid, h, land, epsilon_m=eps)
+def _check_invariants(
+    grid: Grid, h: np.ndarray, land: np.ndarray, eps: float = 1e-3, rho8_seed: int | None = None
+) -> None:
+    r = route(grid, h, land, epsilon_m=eps, rho8_seed=rho8_seed)
     land_idx = np.nonzero(land)[0]
 
     # Every land cell appears exactly once in the stack.
@@ -54,9 +56,10 @@ def _check_invariants(grid: Grid, h: np.ndarray, land: np.ndarray, eps: float = 
 
 
 @pytest.mark.parametrize("n", [4, 16, 48])
-def test_invariants_on_rough_continent(n: int) -> None:
+@pytest.mark.parametrize("rho8_seed", [None, 7])
+def test_invariants_on_rough_continent(n: int, rho8_seed: int | None) -> None:
     grid, h, land = _cap_world(n)
-    _check_invariants(grid, h, land)
+    _check_invariants(grid, h, land, rho8_seed=rho8_seed)
 
 
 def test_invariants_with_flat_plateau() -> None:
@@ -115,3 +118,25 @@ def test_shape_and_epsilon_validation() -> None:
         route(grid, np.ones(3), np.ones(3, dtype=bool))
     with pytest.raises(ValueError):
         route(grid, np.ones(grid.ncells), np.ones(grid.ncells, dtype=bool), epsilon_m=0)
+
+
+def test_rho8_breaks_parallel_flow_on_a_plane() -> None:
+    # A plane tilted at ~30 deg to the grid on face 0: D8 sends every cell the
+    # same way (parallel channels); Rho8 mixes the two nearest directions.
+    grid = Grid(48)
+    p = grid.xyz()
+    land = p[:, 0] > 0.6  # a cap around the centre of face 0
+    h = np.where(land, 1000.0 + 5e5 * (0.87 * p[:, 1] + 0.5 * p[:, 2]), -100.0)
+    interior = land & (p[:, 0] > 0.8)
+    nb = grid.neighbours()
+
+    def modal_share(seed: int | None) -> float:
+        rec = route(grid, h, land, rho8_seed=seed).receiver
+        k = np.array([int(np.nonzero(nb[c] == rec[c])[0][0]) for c in np.nonzero(interior)[0]])
+        return float(np.bincount(k).max() / k.size)
+
+    assert modal_share(None) > 0.95
+    assert modal_share(3) < 0.8
+    a = route(grid, h, land, rho8_seed=3).receiver
+    assert np.array_equal(a, route(grid, h, land, rho8_seed=3).receiver)  # repeatable
+    assert not np.array_equal(a, route(grid, h, land, rho8_seed=4).receiver)

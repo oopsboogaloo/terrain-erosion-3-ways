@@ -24,7 +24,7 @@ from globerode.config import Config
 from globerode.erode import ErosionParams, erode, uplift_from_height
 from globerode.erode.restore import cap_peaks, local_restore
 from globerode.erode.routing import Routing
-from globerode.erode.variation import erosion_fields
+from globerode.erode.variation import SEED_OFFSETS, erosion_fields, strata_for
 from globerode.fields import Fields
 from globerode.grid import Grid
 from globerode.noise import fbm_on_grid, resolvable_wavelength_m
@@ -49,6 +49,7 @@ def _params(cfg: Config, level: int) -> ErosionParams:
         max_slope_deg=e.max_slope_deg,
         deposition_g=e.deposition_g,
         deposition_passes=e.deposition_passes,
+        rho8_seed=cfg.prep.noise.seed + SEED_OFFSETS["rho8"] if e.flow_routing == "rho8" else None,
     )
 
 
@@ -64,6 +65,7 @@ def run_cascade(cfg: Config, levels_img: np.ndarray, log: Log) -> tuple[Grid, Fi
     routing: Routing | None = None
     fields: Fields | None = None
 
+    t_elapsed = 0.0  # model years so far, for the rock elevation of strata (D33)
     for level, n in enumerate(cfg.resolution.levels):
         grid = Grid(n, radius_m=cfg.radius_m)
         classes = equirect_to_cube_classes(grid, levels_img, nclasses)
@@ -106,7 +108,10 @@ def run_cascade(cfg: Config, levels_img: np.ndarray, log: Log) -> tuple[Grid, Fi
             progress,
             erodibility=var["erodibility"],
             rainfall=var["rainfall"],
+            strata=strata_for(grid, cfg.erode.strata, cfg.prep.noise.seed + SEED_OFFSETS["folds"]),
+            t0_yr=t_elapsed,
         )
+        t_elapsed += params.iterations * params.dt_yr
         h = np.where(land, result.height, h_init)
         fields["lake_fill"] = result.lake_fill_m
         routing = result.routing

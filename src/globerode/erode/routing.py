@@ -6,7 +6,11 @@ One call does:
    coast, raising every pit so each land cell has a strictly lower path to
    the sea. Pop order is a valid processing order (receivers before donors).
 2. **Steepest-descent receivers** on the filled surface. A strictly lower
-   neighbour was always popped earlier, so the order stays valid.
+   neighbour was always popped earlier, so the order stays valid. Optionally
+   Rho8 (Fairfield & Leymarie 1991, doi:10.1029/90WR02658): each diagonal
+   distance is stretched by a random (2 - r) / sqrt(2), r in [0, 1), which
+   breaks D8's straight, grid-aligned channels (D32). r comes from a hash of
+   (cell, direction, seed), so runs are repeatable.
 3. **Drainage area**, summed down the tree in reverse order.
 
 Heights are float64 here: epsilon steps of 1e-3 m are below float32
@@ -109,21 +113,35 @@ def _priority_flood(
     return filled, receiver, stack, count
 
 
+@njit(cache=True, inline="always")
+def _unit_hash(c: int, k: int, seed: int) -> float:
+    """Uniform [0, 1) from (cell, direction, seed) via splitmix64."""
+    z = np.uint64(c * 8 + k) ^ (np.uint64(seed) * np.uint64(0x9E3779B97F4A7C15))
+    z = z + np.uint64(0x9E3779B97F4A7C15)
+    z = (z ^ (z >> np.uint64(30))) * np.uint64(0xBF58476D1CE4E5B9)
+    z = (z ^ (z >> np.uint64(27))) * np.uint64(0x94D049BB133111EB)
+    z = z ^ (z >> np.uint64(31))
+    return float(z >> np.uint64(11)) * (1.0 / 9007199254740992.0)
+
+
 @njit(cache=True, parallel=True)
-def _steepest_receivers(filled: np.ndarray, land: np.ndarray, receiver: np.ndarray, n: int) -> None:
+def _steepest_receivers(
+    filled: np.ndarray, land: np.ndarray, receiver: np.ndarray, n: int, rho8_seed: int
+) -> None:
     """Point each land cell at its steepest strictly-lower neighbour (in place).
 
     Sea neighbours count as height 0 (sea level). If none is lower, the flood
-    receiver is kept (it is always lower by construction).
+    receiver is kept (it is always lower by construction). ``rho8_seed`` >= 0
+    stretches diagonal distances at random (Rho8).
     """
+    rt2 = math.sqrt(2.0)
     for c in prange(filled.shape[0]):
         if not land[c]:
             continue
         f, i, j = cell_fij(c, n)
         hc = filled[c]
         best = receiver[c]
-        hb = filled[best] if land[best] else 0.0
-        best_s = (hc - hb) / _dist(c, best, n)
+        best_s = -1.0
         for k in range(8):
             b = neighbour(f, i, j, NEIGHBOUR_OFFSETS[k, 0], NEIGHBOUR_OFFSETS[k, 1], n, EDGE_TABLE)
             if b < 0:
@@ -131,7 +149,10 @@ def _steepest_receivers(filled: np.ndarray, land: np.ndarray, receiver: np.ndarr
             hb = filled[b] if land[b] else 0.0
             if hb >= hc:
                 continue
-            s = (hc - hb) / _dist(c, b, n)
+            d = _dist(c, b, n)
+            if rho8_seed >= 0 and k >= 4:  # diagonal
+                d *= (2.0 - _unit_hash(c, k, rho8_seed)) / rt2
+            s = (hc - hb) / d
             if s > best_s or (s == best_s and b < best):
                 best_s = s
                 best = b
@@ -163,12 +184,14 @@ def route(
     land: np.ndarray,
     epsilon_m: float = DEFAULT_EPSILON_M,
     rainfall: np.ndarray | None = None,
+    rho8_seed: int | None = None,
 ) -> Routing:
     """Fill pits and route flow over land cells to the sea.
 
     ``height_m`` should be positive on land (the coast clamp guarantees it).
     ``rainfall`` (optional, per cell, ~1 on average) weights each cell's
     area, so ``area`` becomes rain-weighted drainage area (discharge, D26).
+    ``rho8_seed`` turns on Rho8 receivers (D32); None gives plain D8.
     Raises ValueError if some land cannot reach the sea (e.g. no sea at all).
     """
     h = np.ascontiguousarray(height_m, dtype=np.float64)
@@ -186,7 +209,8 @@ def route(
             "the map needs at least some ocean touching every landmass"
         )
     stack = stack_full[:count].copy()
-    _steepest_receivers(filled, is_land, receiver, grid.n)
+    seed = -1 if rho8_seed is None else rho8_seed
+    _steepest_receivers(filled, is_land, receiver, grid.n, seed)
     cell_area = grid.cell_area_m2.astype(np.float64)
     if rainfall is not None:
         cell_area = cell_area * np.asarray(rainfall, dtype=np.float64)

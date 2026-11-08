@@ -168,6 +168,21 @@ class UpliftVariation(VariationConfig):
     scale_km: float = Field(800.0, gt=0)
 
 
+class StrataConfig(_Strict):
+    """Layered rock (D33): hardness alternates with rock elevation in bands.
+
+    Band position is the rock's elevation (height minus uplift so far) plus a
+    smooth fold offset, so layers tilt and bend across a region. Hard bands
+    form cliffs, ledges and mesa caps; soft bands form benches and slopes.
+    """
+
+    contrast: float = Field(4.0, ge=1, description="hard/soft erodibility ratio (1 = off)")
+    thickness_m: float = Field(800.0, gt=0, description="one hard + one soft band")
+    sharpness: float = Field(2.0, gt=0, description="higher = sharper band edges")
+    fold_amp_m: float = Field(1500.0, ge=0, description="vertical size of folds")
+    fold_scale_km: float = Field(800.0, gt=0, description="horizontal size of folds")
+
+
 class ErodeConfig(_Strict):
     enabled: bool = True
     k: float = Field(7e-7, gt=0, description="erodibility K (1/yr * m^(1-2m))")
@@ -195,6 +210,10 @@ class ErodeConfig(_Strict):
     deposition_passes: int = Field(
         5, ge=2, le=50, description="Gauss-Seidel passes per step when depositing (>= 2)"
     )
+    flow_routing: Literal["rho8", "d8"] = Field(
+        "rho8", description="rho8 breaks straight grid-aligned channels (D32)"
+    )
+    strata: StrataConfig = StrataConfig()
     erodibility: ErodibilityVariation = ErodibilityVariation()
     rainfall: RainfallVariation = RainfallVariation()
     uplift: UpliftVariation = UpliftVariation()
