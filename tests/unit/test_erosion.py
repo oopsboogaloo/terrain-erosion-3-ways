@@ -122,3 +122,35 @@ def test_deposition_keeps_more_land_and_needs_cell_area() -> None:
             None,
             1.0,
         )
+
+
+def test_deposition_needs_two_passes() -> None:
+    from globerode.erode.stream_power import stream_power_step
+
+    grid, h0, land = _cap(8)
+    r = erode(grid, h0, land, np.zeros(grid.ncells), ErosionParams(iterations=1)).routing
+    area = grid.cell_area_m2.astype(np.float64)
+
+    def step(g: float, passes: int = 5) -> np.ndarray:
+        h = h0.copy()
+        stream_power_step(
+            h,
+            np.zeros(grid.ncells),
+            np.full(grid.ncells, 1e-6),
+            r.area,
+            r.receiver,
+            r.stack,
+            land,
+            grid.n,
+            grid.radius_m,
+            1e5,
+            0.5,
+            area,
+            g,
+            passes,
+        )
+        return h
+
+    with pytest.raises(ValueError, match="2 passes"):
+        step(1.0, passes=1)
+    assert not np.allclose(step(1.0)[land], step(0.0)[land])  # deposition applies

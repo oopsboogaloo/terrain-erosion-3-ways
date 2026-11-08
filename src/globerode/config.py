@@ -193,7 +193,7 @@ class ErodeConfig(_Strict):
         1.0, ge=0, description="sediment deposition coefficient G (0 = off)"
     )
     deposition_passes: int = Field(
-        5, ge=1, le=50, description="Gauss-Seidel passes per step when depositing"
+        5, ge=2, le=50, description="Gauss-Seidel passes per step when depositing (>= 2)"
     )
     erodibility: ErodibilityVariation = ErodibilityVariation()
     rainfall: RainfallVariation = RainfallVariation()

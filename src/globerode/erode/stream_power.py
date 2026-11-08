@@ -102,14 +102,17 @@ def stream_power_step(
     m: float,
     cell_area_m2: np.ndarray | None = None,
     deposition_g: float = 0.0,
-    passes: int = 1,
+    passes: int = 5,
 ) -> None:
     """One implicit uplift + incision (+ deposition) step, updating ``h`` (float64) in place.
 
-    ``deposition_g`` > 0 needs ``cell_area_m2`` and uses ``passes`` Gauss-Seidel passes.
+    ``deposition_g`` > 0 needs ``cell_area_m2`` and uses ``passes`` (>= 2) Gauss-Seidel
+    passes: the first pass has no upstream sediment estimate yet.
     """
     if deposition_g > 0 and cell_area_m2 is None:
         raise ValueError("deposition needs cell areas")
+    if deposition_g > 0 and passes < 2:
+        raise ValueError("deposition needs at least 2 passes")
     ca = (
         np.ascontiguousarray(cell_area_m2, np.float64)
         if cell_area_m2 is not None
@@ -129,5 +132,5 @@ def stream_power_step(
         dt_yr,
         m,
         float(deposition_g),
-        max(1, int(passes)),
+        int(passes),
     )
