@@ -378,9 +378,8 @@ Tuning happens on test worlds at preview size, against the report metrics
 - For each output pixel: lon/lat → xyz → face and fractional (i, j) →
   **bicubic (Catmull-Rom)** sample from the halo-padded face. Numba,
   parallel over rows.
-- **Polar rows**: rows where one output pixel covers many cells get
-  supersampled (more sample points per pixel, averaged), so the poles
-  don't come out blocky.
+- No polar supersampling (D10): output width is always 4N, so output
+  pixels are never larger than cells.
 
 ### 9.2 Coast re-lock (spec §10.3)
 
