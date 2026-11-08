@@ -146,7 +146,7 @@ class Fields:
 ```
 
 - Named arrays, all flat over the cell index. Main dtypes: `float32` for
-  heights and maps, `int32` for indices, `uint8` for masks.
+  heights and maps (but heights are `float64` during routing and erosion, D9), `int32` for indices, `uint8` for masks.
 - Stages read the fields they need and add new ones. The pipeline drops
   fields once no later stage needs them, to save memory.
 - Units everywhere: **metres, m², years**.

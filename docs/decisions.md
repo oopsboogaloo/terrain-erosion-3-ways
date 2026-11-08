@@ -15,3 +15,5 @@ history.
 | D7 | 2026-11-08 | argparse CLI | No dependency; enough for a Claude-driven tool | DESIGN §11 |
 | D8 | 2026-11-08 | Previews rendered in NumPy; Blender only for `render` | Fast, no Blender needed in CI | DESIGN §12 |
 | P1 | 2026-11-08 | Review policy A: user reviews milestone PRs (steps 4, 5, 6, 10); Claude merges the others on green CI | Keeps the user on the key results without blocking routine steps | PLAN §3 |
+| M1 | 2026-11-08 | Routing speed check (PLAN step 3) passed: Priority-Flood+ε + receivers + drainage area take 0.5–0.7 s at N=512 and 12–18 s at N=2048 (smooth vs white-noise terrain), peak RSS 1.5–2.2 GB, in the 4-core sandbox | ~100 iterations at 8K ≈ 20–30 min of routing, far under the 60 s/iteration stop threshold | PLAN §1 step 3 |
+| D9 | 2026-11-08 | Heights are float64 during routing and erosion (other fields stay float32) | ε = 1e-3 m fill steps are below float32 resolution at mountain heights (~0.5 mm at 5 km); costs ~100 MB extra at 8K | DESIGN §4, §7.2 |
