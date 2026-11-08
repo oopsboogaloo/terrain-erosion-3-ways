@@ -134,7 +134,9 @@ Bicubic interpolation near face edges needs cells from the next face.
 `resample.py` builds a temporary padded copy of each face with a 2-cell
 halo. Halo values are interpolated from the neighbouring face at the halo
 cell's exact sphere position, so they are smooth across edges. Halos are
-used only for resampling, never for the simulation.
+used only for resampling, never for the simulation. Corner blocks (both
+coordinates outside the face) are refined iteratively so cube corners stay
+second-order accurate (D13).
 
 ## 4. Fields container
 
@@ -326,9 +328,9 @@ their distribution (hypsometry) matches `h_init`'s.
 ### 7.7 Cascade
 
 - Level 0 (N=512): `iterations[512]` iterations.
-- Upsample h to N=2048 (bicubic via halos, §3.4), add the fine noise
-  octaves (§6.4), recompute the fine land mask and coast clamp, run
-  `iterations[2048]` iterations.
+- Upsample h to N=2048 (bicubic via halos, §3.4, with sea cells set to
+  0 m first, D14), add the fine noise octaves (§6.4), recompute the fine
+  land mask and coast clamp, run `iterations[2048]` iterations.
 - Uplift and `h_init` are recomputed at the fine level from the
   fine-resolution prep (not upsampled), so the fine coastline stays sharp.
 - Δt and K are the same at every level, so parameters mean the same thing
