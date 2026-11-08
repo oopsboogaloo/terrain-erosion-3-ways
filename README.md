@@ -7,7 +7,7 @@ ridges and continental shelves. Everything after loading the map runs on a
 are equirectangular height maps (EXR / 16-bit PNG / TIFF), masks for
 texturing, and a ready-made Blender scene.
 
-![mini_earth preview](docs/images/step9_mini_earth_preview.png)
+![8K mini_earth rendered in Blender](docs/images/mvp_8k_render.png)
 
 Specification, design, plan and decision log:
 [SPEC](docs/SPEC.md) · [DESIGN](docs/DESIGN.md) · [PLAN](docs/PLAN.md) ·
@@ -160,7 +160,8 @@ Measured in a 4-core / 15 GB cloud sandbox (CPU only):
 | Run | Time | Peak memory |
 |---|---|---|
 | Preview (2048×1024, N=512, 200 iterations) | ~1.5 min | ~0.5 GB |
-| 8K (8192×4096, N=512→2048) | ~25 min | ~4 GB |
+| 8K (8192×4096, N=512→2048) | ~25 min | ~4.1 GB |
+| Blender render of the 8K EXR, 1024 px, 32 samples | ~35 s | — |
 | 16K | not supported in the sandbox (RAM) | — |
 
 A machine with more cores runs proportionally faster for the parallel stages.
