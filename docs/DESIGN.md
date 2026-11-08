@@ -208,8 +208,9 @@ before running, and refuses to start if it's over the available RAM (spec §3.4)
 - Total diffusion time `t = σ²/2` gives a Gaussian blur of width σ.
   Explicit stepping with `Δt = 0.2·d_min²` (stable, below the 0.25 limit).
   The number of steps follows from `t / Δt`.
-- **Brute force at full resolution [Decision D2]**: about 1 200 steps at
-  8K with σ=120 km. Estimated 20–60 s on the sandbox. A multi-resolution
+- **Brute force at full resolution [Decision D2]**: about 2 000 steps at
+  8K with σ=120 km. Measured ≈110 s in the sandbox (M2), using a
+  temporary neighbour table (D12). A multi-resolution
   version would be faster but more complex and could lose narrow land.
   Brute force is simpler, and the time is small next to erosion.
 - **Coast ramp**: after smoothing,

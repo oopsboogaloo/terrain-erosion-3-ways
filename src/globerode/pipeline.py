@@ -1,7 +1,7 @@
 """Runs the stages in order and writes a run directory (DESIGN §1, §10).
 
-Stages so far (plan step 4, walking skeleton):
-resample -> heights (placeholder) -> export -> previews.
+Stages so far: resample -> prep (smoothing, curve, noise, ocean) -> export
+-> previews. Erosion is added in plan step 6.
 """
 
 from __future__ import annotations
@@ -23,8 +23,8 @@ import numpy as np
 from globerode import __version__
 from globerode.config import Config, dump_toml
 from globerode.export import relock_coast, write_heights, write_mask_png8
-from globerode.fields import Fields
 from globerode.grid import Grid
+from globerode.prep import prep_fields
 from globerode.report.previews import write_hillshade_preview
 from globerode.resample import (
     cube_to_equirect,
@@ -32,9 +32,6 @@ from globerode.resample import (
     equirect_to_cube_classes,
     read_levels,
 )
-
-# Temporary land heights until the height curve lands in step 5.
-PLACEHOLDER_LAND_SCALE_M = 5000.0
 
 BYTES_PER_CELL = 45  # DESIGN §4 peak estimate
 BYTES_PER_OUTPUT_PIXEL = 4 + 4 + 2 + 2 + 8  # height f32, relock f32, classes, uint16, temp
@@ -164,23 +161,13 @@ def run(cfg: Config, run_dir: Path, quiet: bool = False) -> RunResult:
     is_land_class = np.array([c.kind == "land" for c in classes_cfg])
     n = cfg.resolution.levels[-1]
     grid = Grid(n, radius_m=cfg.radius_m)
-    fields = Fields(grid)
 
     with log.stage("resample"):
         levels_img = read_levels(cfg.input.levels, cfg)
-        fields["class"] = equirect_to_cube_classes(grid, levels_img, nclasses)
-        fields["land"] = is_land_class[fields["class"]]
+        classes = equirect_to_cube_classes(grid, levels_img, nclasses)
 
-    with log.stage("heights"):
-        # Placeholder until step 5: land = base * 5 km, ocean = painted depth.
-        value = np.array(
-            [
-                (c.base or 0.0) * PLACEHOLDER_LAND_SCALE_M if c.kind == "land" else c.depth_m or 0.0
-                for c in classes_cfg
-            ],
-            dtype=np.float64,
-        )
-        fields["height"] = value[fields["class"]]
+    with log.stage("prep"):
+        fields = prep_fields(grid, classes, cfg)
 
     out_dir = run_dir / "outputs"
     with log.stage("export"):

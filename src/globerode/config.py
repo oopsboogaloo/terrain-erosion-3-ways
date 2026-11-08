@@ -92,6 +92,49 @@ class InputConfig(_Strict):
         return self
 
 
+def _default_curve() -> list[tuple[float, float]]:
+    return [(0.0, 0.0), (0.2, 150.0), (0.5, 900.0), (0.8, 3500.0), (1.0, 7500.0)]
+
+
+class NoiseConfig(_Strict):
+    seed: int = 42
+    octaves: int = Field(8, ge=1, le=16)
+    base_km: float = Field(800.0, gt=0)
+    gain: float = Field(0.5, gt=0, lt=1)
+    warp: float = Field(0.3, ge=0)
+    amp_m: float = Field(50.0, ge=0, description="noise amplitude at sea level")
+    amp_per_m: float = Field(0.15, ge=0, description="extra amplitude per metre of height")
+
+
+class PrepConfig(_Strict):
+    sigma_km: float = Field(120.0, ge=0, description="land smoothing width")
+    coast_ramp_km: float = Field(40.0, ge=0)
+    coast_base: float | None = Field(
+        None, ge=0, le=1, description="value at the coast; default: lowest land base"
+    )
+    curve: list[tuple[float, float]] = Field(default_factory=_default_curve)
+    noise: NoiseConfig = NoiseConfig()
+
+    @field_validator("curve")
+    @classmethod
+    def _curve_ok(cls, v: list[tuple[float, float]]) -> list[tuple[float, float]]:
+        xs = [p[0] for p in v]
+        ys = [p[1] for p in v]
+        if len(v) < 2 or any(b <= a for a, b in pairwise(xs)):
+            raise ValueError("curve needs >= 2 points with strictly increasing x")
+        if any(b < a for a, b in pairwise(ys)):
+            raise ValueError("curve heights must not decrease")
+        return v
+
+
+class OceanConfig(_Strict):
+    sigma_km: float = Field(150.0, ge=0)
+    shelf_depth_m: float = Field(-130.0, lt=0)
+    shelf_width_km: float = Field(80.0, gt=0)
+    slope_width_km: float = Field(150.0, gt=0)
+    floor_noise_m: float = Field(150.0, ge=0)
+
+
 class CoastConfig(_Strict):
     mode: Literal["locked"] = "locked"
     min_land_height_m: float = Field(1.0, gt=0)
@@ -122,6 +165,8 @@ class Config(_Strict):
     planet: PlanetConfig = PlanetConfig()
     resolution: ResolutionConfig = ResolutionConfig()
     input: InputConfig
+    prep: PrepConfig = PrepConfig()
+    ocean: OceanConfig = OceanConfig()
     coast: CoastConfig = CoastConfig()
     output: OutputConfig = OutputConfig()
 
