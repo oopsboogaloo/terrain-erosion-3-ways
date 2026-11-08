@@ -148,6 +148,10 @@ class ErodeConfig(_Strict):
     epsilon_m: float = Field(1e-3, gt=0)
     restore_heights: Literal["local", "none"] = "local"
     restore_sigma_km: float = Field(200.0, gt=0, description="region size for the height restore")
+    peak_cap_ratio: float = Field(
+        1.1, ge=0, description="compress land above this x prepared height (0 = off)"
+    )
+    peak_cap_soft: float = Field(0.1, gt=0, description="headroom above the cap, as a fraction")
     river_threshold_km2: float = Field(50_000.0, gt=0)
 
     @field_validator("iterations")

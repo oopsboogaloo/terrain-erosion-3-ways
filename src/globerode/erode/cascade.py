@@ -21,7 +21,7 @@ import numpy as np
 
 from globerode.config import Config
 from globerode.erode import ErosionParams, erode, uplift_from_height
-from globerode.erode.restore import local_restore
+from globerode.erode.restore import cap_peaks, local_restore
 from globerode.erode.routing import Routing
 from globerode.fields import Fields
 from globerode.grid import Grid
@@ -105,5 +105,12 @@ def run_cascade(cfg: Config, levels_img: np.ndarray, log: Log) -> tuple[Grid, Fi
             fields["land"],
             cfg.erode.restore_sigma_km * 1000.0,
             cfg.coast.min_land_height_m,
+        )
+        fields["height"] = cap_peaks(
+            fields["height"],
+            fields["h_init"],
+            fields["land"],
+            cfg.erode.peak_cap_ratio,
+            cfg.erode.peak_cap_soft,
         )
     return prev_grid, fields, routing

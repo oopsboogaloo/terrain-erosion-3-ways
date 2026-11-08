@@ -44,3 +44,17 @@ def test_block_average_preserves_weighted_mean() -> None:
     coarse = block_average(grid, v, a, 4)
     assert coarse.shape == (6 * 4 * 4,)
     assert coarse.mean() == pytest.approx(v.mean(), rel=0.05)
+
+
+def test_cap_peaks_compresses_only_above_threshold() -> None:
+    from globerode.erode.restore import cap_peaks
+
+    h_init = np.full(5, 1000.0)
+    land = np.array([True, True, True, True, False])
+    h = np.array([500.0, 1100.0, 1500.0, 9000.0, 9000.0])
+    out = cap_peaks(h, h_init, land, ratio=1.1, soft=0.1)
+    assert out[0] == 500.0 and out[1] == pytest.approx(1100.0)  # at/below threshold
+    assert 1100.0 < out[2] < 1210.0 and out[3] <= 1210.0  # at most T * (1 + soft)
+    assert out[2] < out[3]  # monotone
+    assert out[4] == 9000.0  # sea untouched
+    assert np.array_equal(cap_peaks(h, h_init, land, 0.0, 0.1), h)  # off
