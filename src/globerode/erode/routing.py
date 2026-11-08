@@ -31,6 +31,8 @@ from globerode.grid import (
     cell_xyz,
     neighbour,
 )
+from globerode.heap import pop as _heap_pop
+from globerode.heap import push as _heap_push
 
 DEFAULT_EPSILON_M = 1e-3
 
@@ -43,55 +45,6 @@ class Routing:
     receiver: np.ndarray  # int32; downstream cell (may be a sea cell), -1 for sea
     stack: np.ndarray  # int32; land cells only, receivers before donors
     area: np.ndarray  # float64 m^2; drainage area (cell's own area included), 0 at sea
-
-
-# --- min-heap keyed on (height, index) ---------------------------------------------
-
-
-@njit(cache=True, inline="always")
-def _less(hk: np.ndarray, hi: np.ndarray, a: int, b: int) -> bool:
-    return bool(hk[a] < hk[b] or (hk[a] == hk[b] and hi[a] < hi[b]))
-
-
-@njit(cache=True)
-def _heap_push(hk: np.ndarray, hi: np.ndarray, size: int, key: float, idx: int) -> int:
-    k = size
-    hk[k] = key
-    hi[k] = idx
-    while k > 0:
-        parent = (k - 1) >> 1
-        if _less(hk, hi, k, parent):
-            hk[k], hk[parent] = hk[parent], hk[k]
-            hi[k], hi[parent] = hi[parent], hi[k]
-            k = parent
-        else:
-            break
-    return size + 1
-
-
-@njit(cache=True)
-def _heap_pop(hk: np.ndarray, hi: np.ndarray, size: int) -> tuple[float, int, int]:
-    key = hk[0]
-    idx = hi[0]
-    size -= 1
-    hk[0] = hk[size]
-    hi[0] = hi[size]
-    k = 0
-    while True:
-        left = 2 * k + 1
-        if left >= size:
-            break
-        child = left
-        right = left + 1
-        if right < size and _less(hk, hi, right, left):
-            child = right
-        if _less(hk, hi, child, k):
-            hk[k], hk[child] = hk[child], hk[k]
-            hi[k], hi[child] = hi[child], hi[k]
-            k = child
-        else:
-            break
-    return key, idx, size
 
 
 # --- kernels -------------------------------------------------------------------------
