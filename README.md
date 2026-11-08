@@ -118,6 +118,7 @@ overridden on the command line, e.g. `--set erode.k=1e-6 --set prep.sigma_km=150
 | `erode.erodibility.contrast`, `scale_km`, `sharpness` | 8, 300, 1.5 | Rock hardness varies by up to this factor: gorges, basins, uneven ridges (1 = off). |
 | `erode.rainfall.contrast`, `scale_km` | 4, 1 500 | Wet and dry regions: wetter areas cut more and denser valleys (1 = off). |
 | `erode.uplift.contrast`, `scale_km` | 3, 800 | Uneven mountain building along ranges (1 = off). |
+| `erode.deposition_g` | 1 | Rivers drop sediment: flat valley floors and filled basins (0 = off). |
 | `erode.max_slope_deg` | 8 | Landslide limit at cell scale: straighter slopes, sharper ridges (0 = off). |
 | `erode.river_threshold_km2` | 50 000 | Catchment area that counts as a river in the mask. |
 | `ocean.shelf_width_km`, `shelf_depth_m` | 80, −130 | Continental shelf. |
@@ -164,7 +165,7 @@ Measured in a 4-core / 15 GB cloud sandbox (CPU only):
 | Run | Time | Peak memory |
 |---|---|---|
 | Preview (2048×1024, N=512, 200 iterations) | ~1.5 min | ~0.5 GB |
-| 8K (8192×4096, N=512→2048) | ~31 min | ~4.8 GB |
+| 8K (8192×4096, N=512→2048) | ~38 min | ~5.0 GB |
 | Blender render of the 8K EXR, 1024 px, 32 samples | ~35 s | — |
 | 16K | not supported in the sandbox (RAM) | — |
 

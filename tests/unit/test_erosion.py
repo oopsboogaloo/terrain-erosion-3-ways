@@ -63,3 +63,94 @@ def test_uplift_from_height() -> None:
     land = np.array([True, True, False])
     u = uplift_from_height(np.array([1000.0, 4000.0, -50.0]), land, 2e-4)
     assert u.tolist() == pytest.approx([2e-4, 8e-4, 0.0])
+
+
+@pytest.mark.parametrize("g", [0.5, 1.0])
+def test_deposition_steady_state_slope(g: float) -> None:
+    # Yuan et al. 2019: at steady state the sediment flux from upstream is
+    # U * (A - a_c) (strictly upstream cells, as in FastScape), so
+    # K A^m S = U (1 + G (A - a_c) / A).
+    grid, h0, land = _cap(24)
+    u, k, m = 1e-3, 1e-5, 0.5
+    params = ErosionParams(k=k, m=m, dt_yr=1e6, kappa_m2_per_yr=0.0, iterations=400, deposition_g=g)
+    res = erode(grid, h0, land, np.where(land, u, 0.0), params)
+    r = res.routing
+    ratios = []
+    for c in np.nonzero(land)[0]:
+        rc = int(r.receiver[c])
+        hr = res.height[rc] if land[rc] else 0.0
+        slope = (res.height[c] - hr) / _dist_m(grid, int(c), rc)
+        a, a_c = r.area[c], float(grid.cell_area_m2[c])
+        ratios.append(slope / ((1 + g * (a - a_c) / a) * u / (k * a**m)))
+    ratios_a = np.array(ratios)
+    # G = 0.5 is exact; at G = 1 a few cells (~5 %) sit up to ~6 % off, independent
+    # of passes and iterations (flow directions flip between near-equal neighbours).
+    assert np.mean(np.abs(ratios_a - 1) < 0.03) > 0.9, np.percentile(ratios_a, [1, 50, 99])
+    assert np.abs(ratios_a - 1).max() < 0.1
+
+
+def test_deposition_keeps_more_land_and_needs_cell_area() -> None:
+    from globerode.erode.stream_power import stream_power_step
+
+    grid, h0, land = _cap(16)
+    h0 = np.where(land, 2000.0 + 500.0 * np.random.default_rng(2).random(grid.ncells), -3000.0)
+    zero = np.zeros(grid.ncells)
+    a = erode(grid, h0, land, zero, ErosionParams(iterations=5, kappa_m2_per_yr=0.0))
+    b = erode(
+        grid, h0, land, zero, ErosionParams(iterations=5, kappa_m2_per_yr=0.0, deposition_g=1.0)
+    )
+    area = grid.cell_area_m2.astype(np.float64)
+
+    def vol(h: np.ndarray) -> float:
+        return float((h * area)[land].sum())
+
+    assert vol(h0) > vol(b.height) > vol(a.height)  # deposition keeps sediment on land
+    with pytest.raises(ValueError):
+        r = a.routing
+        stream_power_step(
+            a.height,
+            zero,
+            zero,
+            r.area,
+            r.receiver,
+            r.stack,
+            land,
+            grid.n,
+            grid.radius_m,
+            1.0,
+            0.5,
+            None,
+            1.0,
+        )
+
+
+def test_deposition_needs_two_passes() -> None:
+    from globerode.erode.stream_power import stream_power_step
+
+    grid, h0, land = _cap(8)
+    r = erode(grid, h0, land, np.zeros(grid.ncells), ErosionParams(iterations=1)).routing
+    area = grid.cell_area_m2.astype(np.float64)
+
+    def step(g: float, passes: int = 5) -> np.ndarray:
+        h = h0.copy()
+        stream_power_step(
+            h,
+            np.zeros(grid.ncells),
+            np.full(grid.ncells, 1e-6),
+            r.area,
+            r.receiver,
+            r.stack,
+            land,
+            grid.n,
+            grid.radius_m,
+            1e5,
+            0.5,
+            area,
+            g,
+            passes,
+        )
+        return h
+
+    with pytest.raises(ValueError, match="2 passes"):
+        step(1.0, passes=1)
+    assert not np.allclose(step(1.0)[land], step(0.0)[land])  # deposition applies

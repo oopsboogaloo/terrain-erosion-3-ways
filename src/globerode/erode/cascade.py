@@ -47,6 +47,8 @@ def _params(cfg: Config, level: int) -> ErosionParams:
         epsilon_m=e.epsilon_m,
         min_land_height_m=cfg.coast.min_land_height_m,
         max_slope_deg=e.max_slope_deg,
+        deposition_g=e.deposition_g,
+        deposition_passes=e.deposition_passes,
     )
 
 

@@ -18,6 +18,7 @@ from globerode.report import previews as P
 
 STATE_FILE = "state.npz"
 SEAM_NOISE_SE = 4.0  # heavy-tailed gradients on eroded terrain: be generous
+SEAM_MIN_PAIRS = 400  # fewer edge pairs (tiny grids): a finite ratio only warns (D31)
 
 
 @dataclass
@@ -70,6 +71,24 @@ def _check(name: str, value: float, rng: tuple[float, float], hard: bool) -> dic
     return {"name": name, "value": value, "range": list(rng), "status": status, "hard": hard}
 
 
+def seam_check(seams: dict[str, float], limits: tuple[float, float], hard: bool) -> dict[str, Any]:
+    """Seam check with allowances for sampling noise (D17) and thin data (D31)."""
+    seam = _check("seams", seams["ratio"], limits, hard)
+    finite = 0 < seam["value"] < math.inf
+    if seam["status"] in ("fail", "warn") and finite:
+        if abs(math.log(seam["value"])) < SEAM_NOISE_SE * seams["log_se"]:
+            # Sampling noise on rough terrain (checked visually, D17), not a seam.
+            seam["status"] = "pass"
+            seam["note"] = (
+                f"outside range but within {SEAM_NOISE_SE:g} standard errors of 1 (noise)"
+            )
+        elif seams["pairs"] < SEAM_MIN_PAIRS:
+            # Too few edge pairs to tell a seam from terrain (tiny grids, D31).
+            seam["status"] = "warn"
+            seam["note"] = f"only {seams['pairs']} edge pairs; too few to fail the run"
+    return seam
+
+
 def build_report(
     state: RunState, height_eq: np.ndarray, land_eq: np.ndarray, cfg: Config
 ) -> dict[str, Any]:
@@ -85,16 +104,7 @@ def build_report(
         _check("coast", float(m["coast"]["mismatched_pixels"]), (0.0, 0.0), "coast" in hard)
     )
     m["seams"] = M.seam_continuity(grid, state.height, land)
-    seam = _check("seams", m["seams"]["ratio"], rc.seam_ratio, "seams" in hard)
-    # Outside the range but within SEAM_NOISE_SE standard errors of 1: sampling noise on
-    # rough terrain (checked visually, see decision D17), not a seam.
-    if (
-        seam["status"] in ("fail", "warn")
-        and 0 < seam["value"] < math.inf
-        and abs(math.log(seam["value"])) < SEAM_NOISE_SE * m["seams"]["log_se"]
-    ):
-        seam["status"] = "pass"
-        seam["note"] = f"outside range but within {SEAM_NOISE_SE:g} standard errors of 1 (noise)"
+    seam = seam_check(m["seams"], rc.seam_ratio, "seams" in hard)
     out["checks"].append(seam)
     m["heights"] = M.height_stats(state.height, state.h_init, land)
     out["checks"].append(
