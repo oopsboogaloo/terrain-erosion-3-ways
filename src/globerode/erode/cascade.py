@@ -7,7 +7,8 @@ For each level N in ``resolution.levels``:
 - the starting surface is ``h_init`` at the first level, else the previous
   level's eroded land upsampled (bicubic), plus the noise octaves this level
   can show but the previous one couldn't;
-- ``erode.iterations[level]`` iterations run.
+- ``erode.iterations[level]`` iterations run, with erodibility, rainfall
+  and uplift varied by smooth noise fields (D26).
 
 After the last level, eroded land is optionally rescaled so each region's
 mean height matches ``h_init`` (local height restore, D16).
@@ -23,6 +24,7 @@ from globerode.config import Config
 from globerode.erode import ErosionParams, erode, uplift_from_height
 from globerode.erode.restore import cap_peaks, local_restore
 from globerode.erode.routing import Routing
+from globerode.erode.variation import erosion_fields
 from globerode.fields import Fields
 from globerode.grid import Grid
 from globerode.noise import fbm_on_grid, resolvable_wavelength_m
@@ -31,6 +33,7 @@ from globerode.resample import cube_to_cube, equirect_to_cube_classes
 from globerode.smooth import Diffuser
 
 Log = Callable[..., None]
+RESTORE_ROUNDS = 3
 
 
 def _params(cfg: Config, level: int) -> ErosionParams:
@@ -43,6 +46,7 @@ def _params(cfg: Config, level: int) -> ErosionParams:
         iterations=e.iterations[level],
         epsilon_m=e.epsilon_m,
         min_land_height_m=cfg.coast.min_land_height_m,
+        max_slope_deg=e.max_slope_deg,
     )
 
 
@@ -80,7 +84,9 @@ def run_cascade(cfg: Config, levels_img: np.ndarray, log: Log) -> tuple[Grid, Fi
             up = up + (nz.amp_m + nz.amp_per_m * np.maximum(up, 0.0)) * band
             start = np.where(land, up, h_init)
 
+        var = erosion_fields(grid, cfg)
         uplift = uplift_from_height(h_init, land, cfg.erode.uplift_per_km_m_per_yr)
+        uplift *= var["uplift"]
         params = _params(cfg, level)
         log("erosion level start", level=level, n=n, iterations=params.iterations)
 
@@ -88,7 +94,17 @@ def run_cascade(cfg: Config, levels_img: np.ndarray, log: Log) -> tuple[Grid, Fi
             if it == total or it % max(1, total // 5) == 0:
                 log("erosion progress", level=level, iteration=it, of=total)
 
-        result = erode(grid, start, land, uplift, params, Diffuser(grid), progress)
+        result = erode(
+            grid,
+            start,
+            land,
+            uplift,
+            params,
+            Diffuser(grid),
+            progress,
+            erodibility=var["erodibility"],
+            rainfall=var["rainfall"],
+        )
         h = np.where(land, result.height, h_init)
         fields["lake_fill"] = result.lake_fill_m
         routing = result.routing
@@ -98,19 +114,22 @@ def run_cascade(cfg: Config, levels_img: np.ndarray, log: Log) -> tuple[Grid, Fi
 
     assert fields is not None and routing is not None and prev_grid is not None
     if cfg.erode.restore_heights == "local":
-        fields["height"] = local_restore(
-            prev_grid,
-            fields["height"],
-            fields["h_init"],
-            fields["land"],
-            cfg.erode.restore_sigma_km * 1000.0,
-            cfg.coast.min_land_height_m,
-        )
-        fields["height"] = cap_peaks(
-            fields["height"],
-            fields["h_init"],
-            fields["land"],
-            cfg.erode.peak_cap_ratio,
-            cfg.erode.peak_cap_soft,
-        )
+        # The peak cap removes height where hard rock stands high, lowering the
+        # regional mean again; a few restore + cap rounds bring it back (D26).
+        for _ in range(RESTORE_ROUNDS):
+            fields["height"] = local_restore(
+                prev_grid,
+                fields["height"],
+                fields["h_init"],
+                fields["land"],
+                cfg.erode.restore_sigma_km * 1000.0,
+                cfg.coast.min_land_height_m,
+            )
+            fields["height"] = cap_peaks(
+                fields["height"],
+                fields["h_init"],
+                fields["land"],
+                cfg.erode.peak_cap_ratio,
+                cfg.erode.peak_cap_soft,
+            )
     return prev_grid, fields, routing

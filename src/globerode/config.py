@@ -135,6 +135,39 @@ class OceanConfig(_Strict):
     floor_noise_m: float = Field(150.0, ge=0)
 
 
+class VariationConfig(_Strict):
+    """A smooth random field that scales a parameter across the globe (D26).
+
+    The factor is ``contrast ** (v / 2)`` with ``v = tanh(sharpness * z)`` and
+    ``z`` unit-variance fBm, so the factor stays within 1/sqrt(contrast) ..
+    sqrt(contrast) and its geometric mean is about 1. ``contrast = 1`` is off.
+    """
+
+    contrast: float = Field(1.0, ge=1, description="max/min ratio of the factor (1 = off)")
+    scale_km: float = Field(1000.0, gt=0, description="largest feature size")
+    octaves: int = Field(4, ge=1, le=12)
+    sharpness: float = Field(1.0, gt=0, description="higher = sharper boundaries")
+
+
+# One subclass per field so a partial table (e.g. only ``scale_km``) keeps that
+# field's own defaults instead of falling back to "off".
+class ErodibilityVariation(VariationConfig):
+    contrast: float = Field(8.0, ge=1)
+    scale_km: float = Field(300.0, gt=0)
+    octaves: int = Field(6, ge=1, le=12)
+    sharpness: float = Field(1.5, gt=0)
+
+
+class RainfallVariation(VariationConfig):
+    contrast: float = Field(4.0, ge=1)
+    scale_km: float = Field(1500.0, gt=0)
+
+
+class UpliftVariation(VariationConfig):
+    contrast: float = Field(3.0, ge=1)
+    scale_km: float = Field(800.0, gt=0)
+
+
 class ErodeConfig(_Strict):
     enabled: bool = True
     k: float = Field(7e-7, gt=0, description="erodibility K (1/yr * m^(1-2m))")
@@ -153,6 +186,12 @@ class ErodeConfig(_Strict):
     )
     peak_cap_soft: float = Field(0.1, gt=0, description="headroom above the cap, as a fraction")
     river_threshold_km2: float = Field(50_000.0, gt=0)
+    max_slope_deg: float = Field(
+        8.0, ge=0, lt=90, description="landslide slope limit at cell scale (0 = off)"
+    )
+    erodibility: ErodibilityVariation = ErodibilityVariation()
+    rainfall: RainfallVariation = RainfallVariation()
+    uplift: UpliftVariation = UpliftVariation()
 
     @field_validator("iterations")
     @classmethod
