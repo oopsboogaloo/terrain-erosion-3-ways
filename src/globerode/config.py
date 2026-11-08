@@ -172,6 +172,7 @@ def _default_formats() -> list[Format]:
 class OutputConfig(_Strict):
     formats: list[Format] = Field(default_factory=_default_formats)
     png_range_m: tuple[float, float] = (-11000.0, 9000.0)
+    save_state: bool = Field(True, description="save state.npz so `globerode report` can rerun")
 
     @field_validator("png_range_m")
     @classmethod
@@ -179,6 +180,18 @@ class OutputConfig(_Strict):
         if v[1] <= v[0]:
             raise ValueError("png_range_m must be [low, high] with high > low")
         return v
+
+
+class ReportConfig(_Strict):
+    """Check thresholds. Hard checks fail the run (exit code 1); others warn."""
+
+    seam_ratio: tuple[float, float] = (0.85, 1.15)
+    hack_exponent: tuple[float, float] = (0.45, 0.65)
+    horton_ratio: tuple[float, float] = (3.0, 5.0)
+    max_height_ratio: tuple[float, float] = (0.85, 1.25)
+    hard_checks: list[Literal["coast", "drainage", "seams", "hack", "horton", "max_height"]] = (
+        Field(default_factory=lambda: ["coast", "drainage", "seams"])  # type: ignore[arg-type]
+    )
 
 
 class Config(_Strict):
@@ -191,6 +204,7 @@ class Config(_Strict):
     erode: ErodeConfig = ErodeConfig()
     coast: CoastConfig = CoastConfig()
     output: OutputConfig = OutputConfig()
+    report: ReportConfig = ReportConfig()
 
     @model_validator(mode="after")
     def _iterations_match_levels(self) -> Config:

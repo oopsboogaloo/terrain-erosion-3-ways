@@ -20,6 +20,7 @@ from typing import Any
 from globerode import __version__
 from globerode.config import ConfigError, load_config
 from globerode.pipeline import ResourceError, estimate, make_run_dir, run
+from globerode.report.tools import compare_runs, rerun_report
 from globerode.testworlds import WORLDS, write_world
 
 EXIT_OK, EXIT_QUALITY, EXIT_CONFIG, EXIT_RESOURCES, EXIT_INTERNAL = 0, 1, 2, 3, 4
@@ -50,6 +51,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--name", help="run name (default: config name)")
     p_run.add_argument("--runs-dir", type=Path, default=Path("runs"), help="default: ./runs")
     p_run.add_argument("--quiet", action="store_true", help="no progress on stderr")
+
+    p_rep = sub.add_parser("report", help="recompute the report of an existing run")
+    p_rep.add_argument("run_dir", type=Path)
+
+    p_cmp = sub.add_parser("compare", help="compare two runs (metrics + side-by-side image)")
+    p_cmp.add_argument("run_a", type=Path)
+    p_cmp.add_argument("run_b", type=Path)
+    p_cmp.add_argument("--out", type=Path, help="image path (default: next to run_b)")
 
     p_est = sub.add_parser("estimate", help="memory/disk estimate only")
     add_config_args(p_est)
@@ -87,6 +96,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             _emit({"ok": True, "config": str(cfg_path), "levels": str(args.out_dir / "levels.png")})
             return EXIT_OK
 
+        if args.command == "report":
+            rep = rerun_report(args.run_dir)
+            _emit(rep)
+            return EXIT_OK if rep["ok"] else EXIT_QUALITY
+        if args.command == "compare":
+            _emit(compare_runs(args.run_a, args.run_b, args.out))
+            return EXIT_OK
+
         cfg = load_config(args.config, args.overrides)
         if args.preview:
             cfg = cfg.preview()
@@ -97,7 +114,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         run_dir = make_run_dir(args.runs_dir, args.name or cfg.name)
         result = run(cfg, run_dir, quiet=args.quiet)
         _emit(result.summary)
-        return EXIT_OK
+        return EXIT_OK if result.summary["ok"] else EXIT_QUALITY
     except ConfigError as e:
         return _fail(EXIT_CONFIG, str(e))
     except ResourceError as e:
