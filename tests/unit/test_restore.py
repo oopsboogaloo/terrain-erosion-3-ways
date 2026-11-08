@@ -17,9 +17,8 @@ def _world(n: int) -> tuple[Grid, np.ndarray, np.ndarray, np.ndarray]:
 
 def test_uniform_lowering_is_undone() -> None:
     grid, land, _, h_init = _world(64)
-    out = local_restore(grid, np.where(land, 0.5 * h_init, h_init), h_init, land, 400e3, 1.0)
-    interior = land & (np.abs(h_init - 800.0) < 1) | (h_init == 6000.0)
-    assert np.allclose(out[interior], h_init[interior], rtol=0.03)
+    out = local_restore(grid, np.where(land, h_init - 300.0, h_init), h_init, land, 400e3, 1.0)
+    assert np.allclose(out[land], h_init[land], atol=1.0)
     assert np.array_equal(out[~land], h_init[~land])
 
 
@@ -34,6 +33,8 @@ def test_peaks_stay_where_they_were_painted() -> None:
     assert (ridge[top & land]).mean() > 0.9, "the highest cells must be on the painted ridge"
     plateau = land & ~ridge & (np.abs(grid.xyz()[:, 2]) > 0.4)
     assert out[plateau].max() < 2500.0
+    # Relief is shifted, not stretched: no cell far above the painted maximum.
+    assert out[land].max() < 1.15 * h_init[land].max()
 
 
 def test_block_average_preserves_weighted_mean() -> None:
