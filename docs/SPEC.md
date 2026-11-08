@@ -48,8 +48,8 @@ eroded without a feature, the feature waits.**
 5. **Coast**: `locked` mode only (§10.3).
 6. **Ocean**: painted ocean levels, smoothed, combined with a shelf ramp
    near the coast (§10.1). Not eroded.
-7. **Output**: 32-bit EXR (metres) and 16-bit PNG equirect, plus `mask_flow`
-   and `mask_erosion` (both nearly free), hillshaded previews and
+7. **Output**: 32-bit EXR (metres) and 16-bit PNG equirect, plus `mask_flow`,
+   `mask_rivers` and `mask_erosion` (all nearly free), hillshaded previews and
    `metadata.json`. A Blender script that builds a globe scene from the EXR
    (§12.1).
 8. **Interface**: `globerode run world.toml [--preview]`. One TOML config.
