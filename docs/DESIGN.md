@@ -1,4 +1,4 @@
-# globerode — Design (draft v0.1)
+# globerode — Design (v0.2, decisions accepted)
 
 How the MVP in [SPEC.md](SPEC.md) §2 will be built. The spec says *what*; this
 document says *how*. Later versions (v2+) are covered only where an MVP
@@ -531,6 +531,9 @@ Generated as equirect images + config:
 - Determinism: two runs → identical bytes.
 
 ## 14. Decisions for review
+
+All eight accepted by the user on 2026-11-08 (recorded in
+[decisions.md](decisions.md)).
 
 | # | Decision | Recommendation | Alternative |
 |---|---|---|---|
