@@ -100,7 +100,10 @@ def test_deposition_keeps_more_land_and_needs_cell_area() -> None:
         grid, h0, land, zero, ErosionParams(iterations=5, kappa_m2_per_yr=0.0, deposition_g=1.0)
     )
     area = grid.cell_area_m2.astype(np.float64)
-    vol = lambda h: float((h * area)[land].sum())  # noqa: E731
+
+    def vol(h: np.ndarray) -> float:
+        return float((h * area)[land].sum())
+
     assert vol(h0) > vol(b.height) > vol(a.height)  # deposition keeps sediment on land
     with pytest.raises(ValueError):
         r = a.routing
