@@ -61,5 +61,5 @@ def test_deterministic() -> None:
 
 def test_uplift_from_height() -> None:
     land = np.array([True, True, False])
-    u = uplift_from_height(np.array([100.0, 400.0, -50.0]), land, 2e-3)
-    assert u.tolist() == pytest.approx([5e-4, 2e-3, 0.0])
+    u = uplift_from_height(np.array([1000.0, 4000.0, -50.0]), land, 2e-4)
+    assert u.tolist() == pytest.approx([2e-4, 8e-4, 0.0])

@@ -21,7 +21,7 @@ import numpy as np
 
 from globerode.config import Config
 from globerode.erode import ErosionParams, erode, uplift_from_height
-from globerode.erode.restore import local_restore
+from globerode.erode.restore import cap_peaks, local_restore
 from globerode.erode.routing import Routing
 from globerode.fields import Fields
 from globerode.grid import Grid
@@ -80,7 +80,7 @@ def run_cascade(cfg: Config, levels_img: np.ndarray, log: Log) -> tuple[Grid, Fi
             up = up + (nz.amp_m + nz.amp_per_m * np.maximum(up, 0.0)) * band
             start = np.where(land, up, h_init)
 
-        uplift = uplift_from_height(h_init, land, cfg.erode.uplift_m_per_yr)
+        uplift = uplift_from_height(h_init, land, cfg.erode.uplift_per_km_m_per_yr)
         params = _params(cfg, level)
         log("erosion level start", level=level, n=n, iterations=params.iterations)
 
@@ -105,5 +105,12 @@ def run_cascade(cfg: Config, levels_img: np.ndarray, log: Log) -> tuple[Grid, Fi
             fields["land"],
             cfg.erode.restore_sigma_km * 1000.0,
             cfg.coast.min_land_height_m,
+        )
+        fields["height"] = cap_peaks(
+            fields["height"],
+            fields["h_init"],
+            fields["land"],
+            cfg.erode.peak_cap_ratio,
+            cfg.erode.peak_cap_soft,
         )
     return prev_grid, fields, routing

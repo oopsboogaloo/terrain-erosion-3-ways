@@ -66,3 +66,30 @@ def local_restore(
     off = cube_to_cube(coarse, off_coarse, grid) if k > 1 else off_coarse
     out: np.ndarray = np.where(land, np.maximum(h_eroded + off, min_land_m), h_eroded)
     return out
+
+
+def cap_peaks(
+    h: np.ndarray,
+    h_init: np.ndarray,
+    land: np.ndarray,
+    ratio: float,
+    soft: float,
+) -> np.ndarray:
+    """Softly compress land rising above ``ratio`` x its prepared height (D24).
+
+    Threshold T = ratio * h_init per cell. Above it, the excess e = h - T is
+    mapped to s * tanh(e / s) with s = soft * T, so peaks approach at most
+    T * (1 + soft) and nothing below T changes. The mapping is monotone for a
+    given T; where T changes steeply between neighbours a capped cell can, in
+    rare cases, end slightly below a downhill neighbour. Flow and river masks
+    are computed before this step, so they are unaffected.
+    """
+    if ratio <= 0:
+        return h
+    t = ratio * np.maximum(h_init, 1.0)
+    s = soft * t
+    e = h - t
+    over = land & (e > 0)
+    out = np.array(h, dtype=np.float64)
+    out[over] = t[over] + s[over] * np.tanh(e[over] / s[over])
+    return out
