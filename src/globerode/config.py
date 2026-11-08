@@ -149,6 +149,25 @@ class VariationConfig(_Strict):
     sharpness: float = Field(1.0, gt=0, description="higher = sharper boundaries")
 
 
+# One subclass per field so a partial table (e.g. only ``scale_km``) keeps that
+# field's own defaults instead of falling back to "off".
+class ErodibilityVariation(VariationConfig):
+    contrast: float = Field(8.0, ge=1)
+    scale_km: float = Field(300.0, gt=0)
+    octaves: int = Field(6, ge=1, le=12)
+    sharpness: float = Field(1.5, gt=0)
+
+
+class RainfallVariation(VariationConfig):
+    contrast: float = Field(4.0, ge=1)
+    scale_km: float = Field(1500.0, gt=0)
+
+
+class UpliftVariation(VariationConfig):
+    contrast: float = Field(3.0, ge=1)
+    scale_km: float = Field(800.0, gt=0)
+
+
 class ErodeConfig(_Strict):
     enabled: bool = True
     k: float = Field(7e-7, gt=0, description="erodibility K (1/yr * m^(1-2m))")
@@ -170,11 +189,9 @@ class ErodeConfig(_Strict):
     max_slope_deg: float = Field(
         8.0, ge=0, lt=90, description="landslide slope limit at cell scale (0 = off)"
     )
-    erodibility: VariationConfig = VariationConfig(
-        contrast=8.0, scale_km=300.0, octaves=6, sharpness=1.5
-    )
-    rainfall: VariationConfig = VariationConfig(contrast=4.0, scale_km=1500.0)
-    uplift: VariationConfig = VariationConfig(contrast=3.0, scale_km=800.0)
+    erodibility: ErodibilityVariation = ErodibilityVariation()
+    rainfall: RainfallVariation = RainfallVariation()
+    uplift: UpliftVariation = UpliftVariation()
 
     @field_validator("iterations")
     @classmethod

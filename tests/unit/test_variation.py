@@ -100,3 +100,12 @@ def test_erode_with_fields_is_deterministic_and_uses_them() -> None:
     c = erode(grid, h0, land, up, p)
     assert np.array_equal(a.height, b.height)
     assert not np.allclose(a.height, c.height)
+
+
+def test_partial_variation_table_keeps_field_defaults() -> None:
+    cfg = _cfg(erodibility={"scale_km": 500.0}, rainfall={"contrast": 2.0})
+    assert cfg.erode.erodibility.scale_km == 500.0
+    assert cfg.erode.erodibility.contrast == 8.0  # not reset to 1 (off)
+    assert cfg.erode.erodibility.sharpness == 1.5
+    assert cfg.erode.rainfall.scale_km == 1500.0
+    assert cfg.erode.uplift.contrast == 3.0
