@@ -21,17 +21,59 @@ The goal is visual plausibility, not geomorphological accuracy.
 
 ### 1.1 Non-goals (v1)
 
-- Plate tectonics, climate or ocean simulation.
-- Fine droplet-style erosion detail (a possible later add-on, §7.6).
+- Plate tectonics, climate or ocean simulation (aspirational, see §17).
+- Fine droplet-style erosion detail (a possible later add-on, §8.6).
 - A GUI. v1 is a command-line tool with a config file and preview images
-  (§9). The core is a library so a GUI can be added later.
+  (§10). The core is a library so a GUI can be added later.
 - Real-world GIS accuracy (datums, ellipsoids). The planet is a perfect sphere.
 
-## 2. Decisions so far
+## 2. MVP (version 1)
+
+v1 is the smallest tool that gives a usable eroded globe. Everything else in
+this spec comes after it (§15). The rule for v1: **if the result still looks
+eroded without a feature, the feature waits.**
+
+### 2.1 In the MVP
+
+1. **Input**: one equirectangular `levels` image (ocean / lowland / midland /
+   highland). Its land/sea boundary is the coastline.
+2. **Grid**: cube sphere, equirect → cube resampling, seam handling (§5, §6.1).
+3. **Prep**: coast distance field, spherical smoothing with σ in km, height
+   curve, 3D seed noise (§7).
+4. **Erosion**: single-flow-direction routing, Priority-Flood pit filling,
+   implicit stream power (Braun–Willett), hillslope diffusion, uplift taken
+   from the curved height map so ranges keep roughly their painted height (§8.1–8.2).
+   Two-level cascade (preview N=512 → N=2048).
+5. **Coast**: `locked` mode only (§9.3).
+6. **Ocean**: depth ramp from the coast distance field (shelf → slope →
+   flat abyss). Not eroded.
+7. **Output**: 32-bit EXR (metres) and 16-bit PNG equirect, plus `mask_flow`
+   and `mask_erosion` (both nearly free), hillshaded previews and
+   `metadata.json`.
+8. **Interface**: `globerode run world.toml [--preview]`. One TOML config.
+9. **Compute**: **CPU only** (NumPy + Numba). Overnight runs are acceptable,
+   so the GPU port can wait. The CPU code is also needed as the test
+   reference.
+10. **Resolution**: 8192×4096. Nothing is done that blocks 16K later.
+
+### 2.2 Not in the MVP (planned, §15)
+
+GPU kernels · sediment deposition and deposition mask · marine fans ·
+delta coast mode · separate high-res coast mask · hardness / rainfall /
+uplift / protect / forced rivers / forced lakes maps · painted bathymetry ·
+cube-face export · lake mask · 16K · checkpoint resume · Blender guide.
+
+### 2.3 MVP done when
+
+- An 8K run of a test world finishes overnight on CPU.
+- Acceptance tests 1–6 (§13) pass.
+- The EXR displaces a sphere in Blender, and you judge it "reads as eroded".
+
+## 3. Decisions so far
 
 | Topic | Decision |
 |---|---|
-| Hardware | NVIDIA GPU (CUDA). CPU fallback for small runs and testing. |
+| Hardware | NVIDIA GPU (CUDA) target. **MVP runs on CPU**; GPU port after. |
 | Resolution | 8192×4096 equirectangular output first; design must scale to 16384×8192. |
 | Interface | CLI + config file + preview images. |
 | Erosion model | Stream power law + hillslope diffusion + simple sediment deposition. |
@@ -44,7 +86,7 @@ The goal is visual plausibility, not geomorphological accuracy.
 | Planet | Radius and elevation range configurable; Earth defaults. |
 | Run time | Overnight acceptable at full resolution; previews should take minutes. |
 
-## 3. Glossary
+## 4. Glossary
 
 - **Equirect**: equirectangular (plate carrée) map, longitude → x, latitude → y, 2:1.
 - **Cube sphere**: the sphere split into 6 square faces by projecting a cube
@@ -56,9 +98,9 @@ The goal is visual plausibility, not geomorphological accuracy.
 - **Stream power law**: erosion rate = K · A^m · S^n, where S is the downhill
   slope and K is erodibility.
 
-## 4. Coordinate system and grid
+## 5. Coordinate system and grid
 
-### 4.1 Working grid: equiangular cube sphere
+### 5.1 Working grid: equiangular cube sphere
 
 All processing after input resampling runs on an **equiangular gnomonic cube
 sphere** ([Ronchi, Iacono & Paolucci 1996][ronchi]). Reasons:
@@ -79,7 +121,7 @@ Every cell stores (precomputed once):
 The exact area and distance values matter because cube-sphere cells are not
 all the same size. Using them keeps erosion consistent everywhere on the globe.
 
-### 4.2 Resolution
+### 5.2 Resolution
 
 The simulation N is set so the equator resolution matches the output map:
 `N = output_width / 4`.
@@ -98,7 +140,7 @@ means processing faces in tiles, which is deferred unless needed.
 Optional `sim_supersample` (e.g. 1.25×) lets the simulation run finer than
 the output resolution.
 
-### 4.3 Conventions
+### 5.3 Conventions
 
 - Longitude −180°…+180°, left→right. Latitude +90° (top) … −90° (bottom).
 - Cube face order and orientation: fixed and documented in the code, with a
@@ -106,7 +148,7 @@ the output resolution.
   checked during Phase 1).
 - Elevation in metres relative to sea level (0 m).
 
-## 5. Inputs
+## 6. Inputs
 
 All raster inputs are equirectangular images. Size can be anything with a
 2:1 ratio; they need not match the output size.
@@ -120,14 +162,14 @@ All raster inputs are equirectangular images. Size can be anything with a
 | `rainfall` | no | Grayscale 0–1 | Precipitation. Weights drainage area into discharge. |
 | `uplift` | no | Grayscale 0–1 | Tectonic uplift rate. Keeps ranges high while erosion cuts them. |
 | `protect` | no | Grayscale 0–1 | 1 = no erosion or deposition here. |
-| `rivers` | no | Black/white lines | Forced river courses. Flow is routed along the line and the bed carved (§7.5). |
-| `lakes` | no | Black/white areas | Forced lakes with a flat surface (§7.5). |
+| `rivers` | no | Black/white lines | Forced river courses. Flow is routed along the line and the bed carved (§8.5). |
+| `lakes` | no | Black/white areas | Forced lakes with a flat surface (§8.5). |
 
 Later options: other cylindrical projections for input (Mercator up to a
 latitude limit, Lambert cylindrical equal-area), and vector coastlines
 (SVG/GeoJSON).
 
-### 5.1 Resampling input onto the cube sphere
+### 6.1 Resampling input onto the cube sphere
 
 - Continuous maps (hardness, rainfall, …): bilinear sampling of the equirect
   at each cell's longitude/latitude, wrapping at ±180°.
@@ -139,14 +181,14 @@ latitude limit, Lambert cylindrical equal-area), and vector coastlines
   negative at sea), e.g. with jump flooding or a fast-marching method. Coast
   locking, shelf generation and smoothing falloff all use this field.
 
-## 6. Pre-processing pipeline (on the sphere)
+## 7. Pre-processing pipeline (on the sphere)
 
-### 6.1 Base height from levels
+### 7.1 Base height from levels
 
 Each class gets a base value from config (e.g. lowland 0.15, midland 0.45,
-highland 1.0 on a 0–1 scale; ocean handled separately in §8).
+highland 1.0 on a 0–1 scale; ocean handled separately in §9).
 
-### 6.2 Mask-aware spherical Gaussian smoothing
+### 7.2 Mask-aware spherical Gaussian smoothing
 
 Goal: smooth land above the lowlands without moving the coast.
 
@@ -162,14 +204,14 @@ Goal: smooth land above the lowlands without moving the coast.
 - Large σ uses multiple resolution levels (blur at lower N, then upsample) to
   keep the cost manageable.
 
-### 6.3 Height curve
+### 7.3 Height curve
 
 - Maps the 0–1 smoothed value to metres with a monotone spline through
   control points given in config, like Gaea's Curve node:
   `curve = [[0,0],[0.2,150],[0.5,900],[0.8,3500],[1.0,7500]]`.
 - The CLI saves a preview image of the curve.
 
-### 6.4 Seed detail (noise)
+### 7.4 Seed detail (noise)
 
 Erosion on a smooth surface gives straight, parallel channels. A little noise
 lets drainage patterns branch.
@@ -181,15 +223,15 @@ lets drainage patterns branch.
   calm and mountains rough.
 - Reproducible from a `seed` value.
 
-## 7. Erosion model
+## 8. Erosion model
 
-### 7.1 Governing equation (land cells)
+### 8.1 Governing equation (land cells)
 
 ```
 ∂h/∂t = U(x)                         uplift (optional map)
       − K(x) · Q^m · S^n              fluvial incision (stream power)
       + κ ∇²h                          hillslope diffusion (soil creep)
-      + D(x)                           deposition (§7.3)
+      + D(x)                           deposition (§8.3)
 ```
 
 - `Q = Σ_upstream (rain · cell_area)`, which is plain drainage area A when no
@@ -204,7 +246,7 @@ the uplift field, which suits the "paint the mountains" workflow. An uplift
 map can be derived from the curved height map (h_target / response time).
 Erosion then cuts valleys into ranges that stay roughly as high as painted.
 
-### 7.2 Numerical method
+### 8.2 Numerical method
 
 - **Flow routing**: each cell drains to its steepest-descent neighbour among
   the 8, using true geodesic distances, including across face edges (single
@@ -229,23 +271,23 @@ Erosion then cuts valleys into ranges that stay roughly as high as painted.
   slider instead of an iteration count. Evaluate in Phase 3 if iteration
   counts at 16K get painful.
 
-### 7.3 Deposition (simple)
+### 8.3 Deposition (simple)
 
 - Each cell carries a sediment flux `Qs` downstream (eroded material
   accumulated along the drainage tree).
 - Deposition rate `G · Qs / Q` (G = deposition coefficient). Material drops
   where slope or flow falls: valley floors, plains, river mouths.
-- Sediment reaching the coast goes to the marine step (§8.2).
+- Sediment reaching the coast goes to the marine step (§9.2).
 - Total eroded and deposited volume is logged as a sanity check.
 
-### 7.4 Stopping
+### 8.4 Stopping
 
 - Set by `iterations` per level, or `erosion_strength` (0–1) mapped to total
   simulated time.
 - Checkpoints (all fields) are saved per level, so a run can resume or be
   re-run from any stage with new parameters.
 
-### 7.5 Forced rivers and lakes
+### 8.5 Forced rivers and lakes
 
 - **Rivers**: painted lines are converted to cell paths on the cube sphere,
   ordered by distance to the coast. Along a path, the receiver is forced to be
@@ -256,7 +298,7 @@ Erosion then cuts valleys into ranges that stay roughly as high as painted.
   height or an explicit value. Flow is routed through to their lowest outlet.
   The lake mask is exported.
 
-### 7.6 Later (not v1)
+### 8.6 Later (not v1)
 
 - Thermal/talus erosion pass for scree slopes.
 - Droplet erosion detail pass at final resolution (the repo's
@@ -264,9 +306,9 @@ Erosion then cuts valleys into ranges that stay roughly as high as painted.
 - Multiple flow direction routing for softer, braided rivers in flat areas.
 - Glacial erosion (U-shaped valleys) at high latitude or altitude.
 
-## 8. Ocean and coastline
+## 9. Ocean and coastline
 
-### 8.1 Generated bathymetry
+### 9.1 Generated bathymetry
 
 From the signed coast distance d (km offshore):
 
@@ -276,13 +318,13 @@ From the signed coast distance d (km offshore):
 - Abyssal plain with low-amplitude 3D noise.
 - Optional `ocean_depth` painted map added on top.
 
-### 8.2 Marine deposition
+### 9.2 Marine deposition
 
 - Sediment flux arriving at each river mouth is spread over sea cells by
   diffusion within `marine_diffusion_km`, building submarine fans and
   shelf deposits.
 
-### 8.3 Coastline modes (`coast.mode`)
+### 9.3 Coastline modes (`coast.mode`)
 
 - `locked` (default): after every step, land cells are clamped to ≥
   `min_land_height` (e.g. +1 m) and sea cells to ≤ `max_sea_height`
@@ -291,9 +333,9 @@ From the signed coast distance d (km offshore):
   deposition, within `delta_max_km` of the original coast. Elsewhere the
   coast stays locked.
 
-## 9. CLI and configuration
+## 10. CLI and configuration
 
-### 9.1 Commands
+### 10.1 Commands
 
 ```
 globerode run   world.toml              # full pipeline
@@ -304,7 +346,7 @@ globerode export world.toml --format exr,png16,cube,masks
 globerode inspect checkpoint.npz        # stats, histograms, quick images
 ```
 
-### 9.2 Example config
+### 10.2 Example config
 
 ```toml
 [planet]
@@ -364,7 +406,7 @@ png_range_m = [-6000, 9000]   # mapping of 16-bit values; also written to metada
 
 Parameter values above are starting guesses, to be tuned in Phase 2.
 
-## 10. Outputs
+## 11. Outputs
 
 All rasters are written as equirect at `output_width`, plus cube faces when
 requested.
@@ -392,17 +434,18 @@ Blender notes go in the README: displacing a UV sphere with the equirect EXR,
 using the cube faces on a quad-sphere mesh, and recommended vertical
 exaggeration.
 
-## 11. Performance targets
+## 12. Performance targets
 
-| Run | Target |
-|---|---|
-| Preview (N=512) end-to-end | < 2 min |
-| 8K (N=2048) full run | < 1 h (overnight acceptable) |
-| 16K (N=4096) full run | overnight (< 12 h) |
+| Run | MVP (CPU) | v2+ (GPU) |
+|---|---|---|
+| Preview (N=512) end-to-end | < 10 min | < 2 min |
+| 8K (N=2048) full run | overnight (< 12 h) | < 1 h |
+| 16K (N=4096) full run | — | overnight (< 12 h) |
 
-Reference hardware: one NVIDIA GPU with 12 GB+ VRAM, 32 GB system RAM.
+Reference hardware: 8+ core CPU with 32 GB RAM; for v2+, one NVIDIA GPU with
+12 GB+ VRAM. The CPU times are estimates to check during the MVP build.
 
-## 12. Acceptance tests
+## 13. Acceptance tests
 
 1. **Seams**: no visible step or crease across cube-face edges or at ±180°
    (automatic check on height gradients along seams).
@@ -418,29 +461,28 @@ Reference hardware: one NVIDIA GPU with 12 GB+ VRAM, 32 GB system RAM.
    tolerance).
 8. **Forced rivers**: painted river paths appear in `mask_rivers` with no gaps.
 
-## 13. Technology (proposed)
+## 14. Technology (proposed)
 
 - **Python 3.11+** CLI and orchestration. Config via TOML.
-- **GPU kernels**: one of NVIDIA Warp, CuPy (raw CUDA kernels) or Numba-CUDA.
-  Chosen in Phase 0 by a small flow-routing benchmark.
-- **CPU reference** implementation (NumPy + Numba) of every stage, used for
-  tests and for GPU-less previews.
+- **MVP: CPU only** with NumPy + Numba. This stays as the reference
+  implementation for tests and for GPU-less previews.
+- **GPU kernels (v2)**: one of NVIDIA Warp, CuPy (raw CUDA kernels) or
+  Numba-CUDA, chosen by a small flow-routing benchmark.
 - I/O: `imageio`/`tifffile`/`OpenEXR` (16-bit and float support required).
 - The repo's existing scripts (`simulation.py`, `river_network.py`, `util.py`)
   stay as reference. New code goes in a `globerode/` package.
 
-## 14. Milestones
+## 15. Milestones
 
-| Phase | Deliverable |
+| Version | Deliverable |
 |---|---|
-| 0 | Cube-sphere grid, equirect↔cube resampling, seam tests, GPU library choice. |
-| 1 | Pre-processing: levels, coast SDF, spherical smoothing, curve, noise, export. Gives a usable smoothed globe with no erosion. |
-| 2 | CPU reference erosion: flow routing, priority-flood, Braun–Willett, diffusion, deposition, masks. Tuned at preview resolution. |
-| 3 | GPU erosion + cascade to 8K. Performance targets. Tzathas-style analytical option evaluated. |
-| 4 | Optional maps (hardness, rain, uplift, protect, forced rivers/lakes), ocean shelf + marine deposits, delta mode. |
-| 5 | 16K support, memory tiling if needed, Blender docs and example scene. |
+| **v1 (MVP)** | Everything in §2.1. Built in steps: (a) cube-sphere grid, resampling, seam tests; (b) prep: coast distance, smoothing, curve, noise, EXR/PNG export, which already gives a usable smoothed globe; (c) CPU erosion + cascade to 8K, flow/erosion masks, previews. |
+| v2 | GPU port (FastFlow-style routing) for speed. Sediment deposition + deposition mask. Lake mask. Checkpoint resume. Evaluate the Tzathas-style analytical option. |
+| v3 | Optional painted maps (hardness, rainfall, uplift, protect, forced rivers/lakes), separate high-res coast mask, painted bathymetry, marine fans, delta mode. |
+| v4 | 16K support, memory tiling if needed, cube-face export, Blender guide and example scene. |
+| Later | Aspirational directions in §17. |
 
-## 15. Open questions
+## 16. Open questions
 
 1. Are your painted maps plate carrée (equirectangular), or another
    cylindrical projection such as Mercator?
@@ -456,6 +498,43 @@ Reference hardware: one NVIDIA GPU with 12 GB+ VRAM, 32 GB system RAM.
    adaptive subdivision in Cycles, or something else)? This sets cube-face
    orientation and file format details.
 7. Interest in a later GUI/globe viewer, so the core API can plan for it?
+
+## 17. Future directions (aspirational, not scheduled)
+
+Noted so the design doesn't rule them out. Neither has been researched yet.
+
+### 17.1 Climate and weather zones
+
+Given the finished globe, estimate an Earth-like climate:
+
+- Overlay standard latitude-based zones: circulation cells (Hadley,
+  Ferrel, polar), prevailing winds, ITCZ, subtropical deserts.
+- Model how continents, oceans and mountains change them: rain shadows,
+  continental versus maritime climates, monsoons, how ocean currents move heat.
+- Outputs could include temperature and rainfall maps, a Köppen-style climate
+  classification map, and biome masks for texturing.
+- Feeds back into erosion: the generated rainfall map can drive the
+  `rainfall` input (§6), so wet coasts erode more than dry interiors.
+
+### 17.2 Tectonics and geology
+
+Work out the terrain from plate history instead of painting it:
+
+- Mark continents/plates and their movements; derive where collisions,
+  rifts and subduction would raise mountains, trenches and volcanic arcs.
+- Use that to produce the `uplift` and `hardness` maps that erosion already
+  takes, so tectonics plugs into the existing pipeline.
+- Produce geological maps underneath the surface: rock types, ages, fault
+  lines, for cartography and texturing.
+
+### 17.3 Design notes that keep these possible
+
+- Keep every field on the shared cube-sphere grid with a common data
+  container, so new stages (climate, tectonics) can read and write fields
+  without new plumbing.
+- Keep the pipeline as separate stages with clear inputs and outputs
+  (`resample → prep → erode → export`), so stages can be inserted before
+  `erode` (tectonics → uplift) or after it (climate → biomes).
 
 ## References
 
