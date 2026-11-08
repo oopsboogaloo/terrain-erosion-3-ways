@@ -87,3 +87,14 @@ def test_density_and_height_stats() -> None:
     st = height_stats(np.array([10.0, 20.0, -5.0]), np.array([10.0, 30.0, -5.0]), land)
     assert st["max_m"] == 20.0
     assert st["max_vs_prepared"] == pytest.approx(20 / 30, abs=1e-3)
+
+
+def test_river_threshold_is_at_least_ten_cells() -> None:
+    from globerode.report.metrics import river_threshold_m2
+
+    coarse = Grid(16)  # mean cell ~ 260 000 km^2
+    assert river_threshold_m2(coarse, 10_000.0) == pytest.approx(
+        10 * 4 * np.pi * coarse.radius_m**2 / coarse.ncells
+    )
+    fine = Grid(2048)
+    assert river_threshold_m2(fine, 10_000.0) == pytest.approx(1e10)

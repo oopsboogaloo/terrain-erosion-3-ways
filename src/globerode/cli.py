@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from globerode import __version__
+from globerode.blender import render
 from globerode.config import ConfigError, load_config
 from globerode.pipeline import ResourceError, estimate, make_run_dir, run
 from globerode.report.tools import compare_runs, rerun_report
@@ -60,6 +61,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_cmp.add_argument("run_b", type=Path)
     p_cmp.add_argument("--out", type=Path, help="image path (default: next to run_b)")
 
+    p_ren = sub.add_parser("render", help="render the run's globe headless (needs bpy)")
+    p_ren.add_argument("run_dir", type=Path)
+    p_ren.add_argument("--out", type=Path)
+    p_ren.add_argument("--size", type=int, default=1024)
+    p_ren.add_argument("--samples", type=int, default=32)
+    p_ren.add_argument("--lon", type=float, default=0.0)
+    p_ren.add_argument("--lat", type=float, default=20.0)
+
     p_est = sub.add_parser("estimate", help="memory/disk estimate only")
     add_config_args(p_est)
 
@@ -100,6 +109,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             rep = rerun_report(args.run_dir)
             _emit(rep)
             return EXIT_OK if rep["ok"] else EXIT_QUALITY
+        if args.command == "render":
+            _emit(render(args.run_dir, args.out, args.size, args.samples, args.lon, args.lat))
+            return EXIT_OK
         if args.command == "compare":
             _emit(compare_runs(args.run_a, args.run_b, args.out))
             return EXIT_OK

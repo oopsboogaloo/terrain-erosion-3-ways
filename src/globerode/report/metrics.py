@@ -46,6 +46,16 @@ def receiver_distance_m(grid: Grid, receiver: np.ndarray) -> np.ndarray:
     return out
 
 
+MIN_RIVER_CELLS = 10  # a river drains at least this many cells' worth of area
+
+
+def river_threshold_m2(grid: Grid, threshold_km2: float) -> float:
+    """Drainage area that makes a cell a river: the configured threshold, but never
+    less than MIN_RIVER_CELLS mean cells (otherwise every cell of a coarse grid is a river)."""
+    mean_cell = 4 * math.pi * grid.radius_m**2 / grid.ncells
+    return max(threshold_km2 * 1e6, MIN_RIVER_CELLS * mean_cell)
+
+
 # --- correctness ----------------------------------------------------------------------------
 
 
