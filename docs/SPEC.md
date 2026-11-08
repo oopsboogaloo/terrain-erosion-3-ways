@@ -71,6 +71,23 @@ cube-face export · lake mask · 16K · checkpoint resume · age slider (§9.4).
 - Acceptance tests 1–6 (§14) pass.
 - The EXR displaces a sphere in Blender, and you judge it "reads as eroded".
 
+**Status (2026-11-08, PLAN step 10):**
+
+| Criterion | Evidence | Status |
+|---|---|---|
+| 8K run overnight on CPU | mini_earth, 8192×4096, sandbox (4 cores): **25.4 min**, peak **4.1 GB** (decisions M4) | done |
+| §14 test 1, seams | 8K report: seam ratio 1.10 (pass); `test_seam_*`; close-up previews | done |
+| §14 test 2, polar consistency | `test_polar_consistency`; equator vs pole caps within 1 % on max height ratio (1.20 / 1.21) | done |
+| §14 test 3, coast lock | 8K report: 0 mismatched pixels; tested on every test world | done |
+| §14 test 4, drainage | 8K report: 100 % of land drains to the sea | done |
+| §14 test 5, determinism | `test_runs_are_deterministic` (byte-identical outputs) | done |
+| §14 test 6, smoothing scale | `test_blur_width_in_km_is_the_same_at_any_latitude` (within 0.3 % at 0°, 60°, 85°) | done |
+| Blender displaces a sphere; "reads as eroded" | `globerode render` of the 8K EXR (`docs/images/mvp_8k_render.png`) | **your call** |
+
+Known limitations carried past the MVP: evenly spaced parallel valleys on the
+flanks of narrow painted ridges (needs a routing change); Horton ratio ~5.8
+(real rivers 3–5; warning only).
+
 ## 3. Engineering requirements
 
 These apply to every version, including the MVP.
