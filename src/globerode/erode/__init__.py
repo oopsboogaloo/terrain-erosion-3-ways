@@ -1,4 +1,4 @@
-"""Erosion (DESIGN §7): iteration loop, hypsometry restore.
+"""Erosion (DESIGN §7): iteration loop and uplift.
 
 One iteration:
   1. route (Priority-Flood+eps): filled heights, receivers, stack, area
@@ -89,23 +89,4 @@ def uplift_from_height(h_init: np.ndarray, land: np.ndarray, u_max_m_per_yr: flo
     """Uplift proportional to the painted height (ranges stay roughly as painted)."""
     top = float(h_init[land].max()) if land.any() else 1.0
     out: np.ndarray = np.where(land, u_max_m_per_yr * np.maximum(h_init, 0.0) / max(top, 1.0), 0.0)
-    return out
-
-
-def restore_hypsometry(
-    h: np.ndarray, target: np.ndarray, land: np.ndarray, step_m: float = 1e-6
-) -> np.ndarray:
-    """Monotone remap of land heights so their distribution matches ``target``'s (D6).
-
-    Rank-based: the k-th lowest land cell gets the k-th lowest target value
-    (plus k * step_m so the map stays strictly increasing). Every downhill
-    direction is kept, so drainage survives. Sea cells are returned unchanged.
-    """
-    out = np.array(h, dtype=np.float64)
-    idx = np.nonzero(land)[0]
-    if idx.size == 0:
-        return out
-    order = idx[np.lexsort((idx, h[idx]))]  # by height, ties by index
-    tgt = np.sort(np.asarray(target, np.float64)[idx])
-    out[order] = tgt + step_m * np.arange(idx.size)
     return out

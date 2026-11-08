@@ -312,7 +312,16 @@ Same finite-volume operator as smoothing (§6.2), on land cells, with
 diffusivity κ (m²/yr) and explicit sub-steps chosen for stability. It
 rounds ridges and stops one-cell spikes.
 
-### 7.6 Keeping heights as painted: hypsometry restore **[Decision D6]**
+### 7.6 Keeping heights as painted: local height restore **[D16, replaces D6]**
+
+**Superseded.** The global hypsometry restore below matched the height
+*distribution* over the whole globe, which at 8K moved mountain-ridge
+heights onto plateau divides. It was replaced by a **local restore** (D16):
+eroded land is multiplied by S = G(h_init·w) / G(h_eroded·w), with G a
+Gaussian of `restore_sigma_km` (default 200 km) and w the land fraction. S is
+computed on a coarse grid (cell ≤ σ/4) from area-weighted block averages and
+upsampled bicubically. Each region keeps its painted mean height; valleys
+keep their shape. Original text, kept for the record:
 
 Uplift ∝ painted height keeps ranges roughly in place, but final heights
 depend on K, U and time, which are fiddly to tune. So an optional final

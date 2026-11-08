@@ -32,14 +32,25 @@ def test_fine_level_keeps_the_fine_coast(tmp_path: Path) -> None:
     assert np.array_equal(h[~land], prep["height"][~land])  # ocean untouched
 
 
-def test_hypsometry_restore_matches_prepared_heights(tmp_path: Path) -> None:
+def test_local_restore_keeps_regional_heights(tmp_path: Path) -> None:
+    from globerode.erode.restore import block_average
+
     cfg = _cfg(tmp_path, "mini_earth", "erode.iterations=[20, 10]")
     img = read_levels(cfg.input.levels, cfg)
-    _, fields, _ = run_cascade(cfg, img, _noop)
-    land = fields["land"]
-    got = np.percentile(fields["height"][land], [10, 50, 90, 100])
-    want = np.percentile(fields["h_init"][land], [10, 50, 90, 100])
-    assert got == pytest.approx(want, rel=1e-3, abs=1.0)
+    grid, fields, _ = run_cascade(cfg, img, _noop)
+    land = fields["land"].astype(np.float64)
+    area = grid.cell_area_m2.astype(np.float64)
+    w = area * land
+    # Regional (8x8-cell block) mean land heights match the prepared surface.
+    got = block_average(grid, fields["height"], w, 8)
+    want = block_average(grid, fields["h_init"], w, 8)
+    frac = block_average(grid, land, area, 8)
+    inland = frac > 0.99
+    assert np.median(np.abs(got[inland] - want[inland]) / want[inland]) < 0.1
+    # The highest cells stay where the highest land was painted.
+    h, h0 = fields["height"], fields["h_init"]
+    top = h >= np.percentile(h[land > 0], 99.5)
+    assert np.median(h0[top]) > np.percentile(h0[land > 0], 90)
 
 
 def test_erosion_changes_the_surface_and_every_land_cell_drains(tmp_path: Path) -> None:

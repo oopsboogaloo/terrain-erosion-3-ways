@@ -144,7 +144,8 @@ class ErodeConfig(_Strict):
     kappa_m2_per_yr: float = Field(1.0, ge=0, description="hillslope diffusivity")
     iterations: list[int] = Field(default_factory=lambda: [200, 100])
     epsilon_m: float = Field(1e-3, gt=0)
-    restore_hypsometry: bool = True
+    restore_heights: Literal["local", "none"] = "local"
+    restore_sigma_km: float = Field(200.0, gt=0, description="region size for the height restore")
     river_threshold_km2: float = Field(10_000.0, gt=0)
 
     @field_validator("iterations")

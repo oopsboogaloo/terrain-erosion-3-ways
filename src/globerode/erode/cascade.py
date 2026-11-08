@@ -9,8 +9,8 @@ For each level N in ``resolution.levels``:
   can show but the previous one couldn't;
 - ``erode.iterations[level]`` iterations run.
 
-After the last level, land heights are optionally remapped to ``h_init``'s
-distribution (hypsometry restore, D6).
+After the last level, eroded land is optionally rescaled so each region's
+mean height matches ``h_init`` (local height restore, D16).
 """
 
 from __future__ import annotations
@@ -20,7 +20,8 @@ from collections.abc import Callable
 import numpy as np
 
 from globerode.config import Config
-from globerode.erode import ErosionParams, erode, restore_hypsometry, uplift_from_height
+from globerode.erode import ErosionParams, erode, uplift_from_height
+from globerode.erode.restore import local_restore
 from globerode.erode.routing import Routing
 from globerode.fields import Fields
 from globerode.grid import Grid
@@ -96,7 +97,13 @@ def run_cascade(cfg: Config, levels_img: np.ndarray, log: Log) -> tuple[Grid, Fi
         prev_land_h = np.where(land, h, 0.0)  # sea at sea level for clean upsampling
 
     assert fields is not None and routing is not None and prev_grid is not None
-    if cfg.erode.restore_hypsometry:
-        land = fields["land"]
-        fields["height"] = restore_hypsometry(fields["height"], fields["h_init"], land)
+    if cfg.erode.restore_heights == "local":
+        fields["height"] = local_restore(
+            prev_grid,
+            fields["height"],
+            fields["h_init"],
+            fields["land"],
+            cfg.erode.restore_sigma_km * 1000.0,
+            cfg.coast.min_land_height_m,
+        )
     return prev_grid, fields, routing

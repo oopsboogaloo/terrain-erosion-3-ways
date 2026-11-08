@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from globerode.erode import ErosionParams, erode, restore_hypsometry, uplift_from_height
+from globerode.erode import ErosionParams, erode, uplift_from_height
 from globerode.grid import FACE_FRAMES, Grid, arc, cell_fij, cell_xyz
 
 
@@ -63,18 +63,3 @@ def test_uplift_from_height() -> None:
     land = np.array([True, True, False])
     u = uplift_from_height(np.array([100.0, 400.0, -50.0]), land, 2e-3)
     assert u.tolist() == pytest.approx([5e-4, 2e-3, 0.0])
-
-
-def test_restore_hypsometry_keeps_order_and_matches_distribution() -> None:
-    rng = np.random.default_rng(2)
-    land = rng.random(2000) < 0.7
-    h = rng.random(2000) * 300.0
-    target = rng.gamma(2.0, 800.0, 2000)
-    out = restore_hypsometry(h, target, land)
-    li = np.nonzero(land)[0]
-    # Order preserved strictly.
-    assert np.array_equal(np.argsort(h[li], kind="stable"), np.argsort(out[li], kind="stable"))
-    assert (np.diff(np.sort(out[li])) > 0).all()
-    # Distribution matches the target's.
-    assert np.allclose(np.sort(out[li]), np.sort(target[li]), atol=1e-2)
-    assert np.array_equal(out[~land], h[~land])

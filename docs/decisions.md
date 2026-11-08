@@ -11,7 +11,7 @@ history.
 | D3 | 2026-11-08 | Own 3D gradient-noise implementation | Same seed gives the same world forever; directly testable | DESIGN §6.4 |
 | D4 | 2026-11-08 | Fill pits every erosion iteration (lakes fill instantly) | Simplest rule that guarantees every river reaches the sea | DESIGN §7.2 |
 | D5 | 2026-11-08 | Stream power with n = 1 only | Unconditionally stable closed-form update; general n waits for a need | DESIGN §7.4 |
-| D6 | 2026-11-08 | Hypsometry restore after erosion, default on | Keeps heights about as painted without fine K/U tuning | DESIGN §7.6 |
+| D6 | 2026-11-08 | ~~Hypsometry restore after erosion, default on~~ (superseded by D16) | Keeps heights about as painted without fine K/U tuning | DESIGN §7.6 |
 | D7 | 2026-11-08 | argparse CLI | No dependency; enough for a Claude-driven tool | DESIGN §11 |
 | D8 | 2026-11-08 | Previews rendered in NumPy; Blender only for `render` | Fast, no Blender needed in CI | DESIGN §12 |
 | P1 | 2026-11-08 | Review policy A: user reviews milestone PRs (steps 4, 5, 6, 10); Claude merges the others on green CI | Keeps the user on the key results without blocking routine steps | PLAN §3 |
@@ -25,3 +25,4 @@ history.
 | D14 | 2026-11-08 | Cascade: before upsampling, sea cells are set to sea level (0 m); the fine level's start = upsampled land + the noise octaves only the fine grid can show; uplift and coast come from the fine prep | Ocean depths would otherwise drag coastal land down through bicubic overshoot; fine coast stays sharp | DESIGN §7.7 |
 | D15 | 2026-11-08 | `mask_erosion` = max(h_init − h_final, 0) at the final level (depth removed relative to the prepared surface), normalised by its maximum | Simple and meaningful after hypsometry restore; per-iteration accumulation adds state for no visible gain | DESIGN §9.3 |
 | M3 | 2026-11-08 | Measured, 8K mini_earth in the sandbox (partly overlapping a test run): erosion stage 1 426 s (prep at both levels + 200 iterations at N=512 + 100 at N=2048), total 24 min, peak 4.1 GB | Well inside "overnight" | PLAN step 6 |
+| D16 | 2026-11-08 | **Replaces D6.** Local height restore: eroded land × S, S = G(h_init·w)/G(h_eroded·w), σ = 200 km, computed on a coarse grid and upsampled (`erode.restore_heights = "local"`, or `"none"`) | At 8K, the global rank-based restore put mountain-ridge heights on plateau divides (peaks in the wrong places). Chosen by the user from three options | DESIGN §7.6 |
