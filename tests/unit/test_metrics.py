@@ -107,3 +107,17 @@ def test_seam_steps_between_flat_faces_are_flagged() -> None:
     assert seam_continuity(grid, stepped, land)["ratio"] == float("inf")
     flat = np.full(grid.ncells, 7.0)
     assert seam_continuity(grid, flat, land)["ratio"] == 1.0
+
+
+def test_seam_check_allowances() -> None:
+    from globerode.report.report import SEAM_MIN_PAIRS, seam_check
+
+    rng = (0.85, 1.15)
+    noisy = {"ratio": 1.3, "log_se": 0.1, "pairs": 5000}  # within 4 SE of 1
+    assert seam_check(noisy, rng, True)["status"] == "pass"
+    real = {"ratio": 1.5, "log_se": 0.01, "pairs": 5000}
+    assert seam_check(real, rng, True)["status"] == "fail"
+    thin = {"ratio": 1.5, "log_se": 0.01, "pairs": SEAM_MIN_PAIRS - 1}
+    assert seam_check(thin, rng, True)["status"] == "warn"
+    step = {"ratio": float("inf"), "log_se": 0.0, "pairs": 10}  # a step always fails
+    assert seam_check(step, rng, True)["status"] == "fail"

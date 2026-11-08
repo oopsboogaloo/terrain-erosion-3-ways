@@ -251,7 +251,8 @@ before running, and refuses to start if it's over the available RAM (spec §3.4)
 1. routing:  Priority-Flood+ε on h  →  h_filled, stack (order), receivers
 2. h ← h_filled                       (fill pits: lakes fill instantly)
 3. drainage area A: accumulate cell areas (× rainfall) down the tree (reverse stack order)
-4. stream power: Braun–Willett implicit update along the stack (K varies, §7.10)
+4. stream power: Braun–Willett implicit update along the stack (K varies, §7.10),
+   with sediment deposition (Yuan et al. 2019, D30)
 4b. landslide slope limit along the stack (§7.10)
 5. diffusion: hillslope diffusion step
 6. clamp: land cells ≥ min_land_height (coast lock)
@@ -306,6 +307,13 @@ h_c = (h_c + Δt·U_c + F · h_r) / (1 + F)
   cell. It's rarely needed for the look we want, so it waits for a request.
 - **Uplift**: `U = u_scale · h_init / max(h_init)` (spec: ranges stay roughly
   as painted).
+- **Deposition [D30]** ([Yuan et al. 2019](https://doi.org/10.1029/2018JF004867),
+  as in FastScape): the target height before incision is raised by
+  `G · V_up / A`, V_up the net volume eroded strictly upstream this step, so
+  `h_c = (h_c + Δt·U_c + G·V_up/A + F·h_r) / (1 + F)`. V_up depends on the new
+  heights, so the stack pass is repeated `deposition_passes` times
+  (Gauss–Seidel). G = 0 is the plain scheme. Sediment reaching the sea is
+  removed.
 
 ### 7.5 Hillslope diffusion
 
