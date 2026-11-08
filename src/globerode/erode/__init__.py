@@ -3,7 +3,8 @@
 One iteration:
   1. route (Priority-Flood+eps): filled heights, receivers, stack, area
   2. h <- filled (pits fill instantly, D4); accumulate lake fill
-  3. stream power (Braun-Willett, n = 1) with uplift
+  3. stream power (Braun-Willett, n = 1) with uplift, and optional
+     deposition (Yuan et al. 2019, D30)
   4. landslide slope limit (optional, D27)
   5. hillslope diffusion
   6. coast clamp: land >= min_land_height
@@ -36,6 +37,8 @@ class ErosionParams:
     epsilon_m: float = 1e-3
     min_land_height_m: float = 1.0
     max_slope_deg: float = 0.0  # 0 = no slope limit
+    deposition_g: float = 0.0  # 0 = no deposition (D30)
+    deposition_passes: int = 5
 
 
 @dataclass
@@ -67,6 +70,7 @@ def erode(
     if erodibility is not None:
         k_field *= erodibility
     lake = np.zeros(grid.ncells, dtype=np.float64)
+    cell_area = grid.cell_area_m2.astype(np.float64) if params.deposition_g > 0 else None
     t_diff = params.kappa_m2_per_yr * params.dt_yr / grid.radius_m**2
     if params.kappa_m2_per_yr > 0 and diffuser is None:
         diffuser = Diffuser(grid)
@@ -87,6 +91,9 @@ def erode(
             grid.radius_m,
             params.dt_yr,
             params.m,
+            cell_area,
+            params.deposition_g,
+            params.deposition_passes,
         )
         limit_slopes(grid, h, is_land, r.stack, params.max_slope_deg)
         if diffuser is not None:

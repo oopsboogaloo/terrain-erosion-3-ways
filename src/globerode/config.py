@@ -189,6 +189,12 @@ class ErodeConfig(_Strict):
     max_slope_deg: float = Field(
         8.0, ge=0, lt=90, description="landslide slope limit at cell scale (0 = off)"
     )
+    deposition_g: float = Field(
+        0.0, ge=0, description="sediment deposition coefficient G (0 = off, ~1 = strong)"
+    )
+    deposition_passes: int = Field(
+        5, ge=1, le=50, description="Gauss-Seidel passes per step when depositing"
+    )
     erodibility: ErodibilityVariation = ErodibilityVariation()
     rainfall: RainfallVariation = RainfallVariation()
     uplift: UpliftVariation = UpliftVariation()
