@@ -87,3 +87,10 @@ def write_heights(
 def write_mask_png8(path: Path, mask: np.ndarray) -> Path:
     Image.fromarray(np.where(mask, 255, 0).astype(np.uint8)).save(path)
     return path
+
+
+def write_mask_png16(path: Path, values01: np.ndarray) -> Path:
+    """Write a 0..1 float mask as 16-bit PNG."""
+    v = np.clip(np.nan_to_num(np.asarray(values01, np.float64)), 0.0, 1.0)
+    Image.fromarray(np.round(v * 65535.0).astype(np.uint16)).save(path)
+    return path

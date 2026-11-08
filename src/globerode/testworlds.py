@@ -150,6 +150,9 @@ def config_text(name: str, output_width: int, levels_file: str = "levels.png") -
         f"output_width = {output_width}",
         f"levels = {levels}",
         "",
+        "[erode]",
+        f"iterations = {[60] * len(levels)}",
+        "",
         "[input]",
         f'levels = "{levels_file}"',
     ]

@@ -180,23 +180,78 @@ def _bilinear_face(field: np.ndarray, f: int, row: float, col: float, n: int) ->
     return float((v00 * (1 - tc) + v01 * tc) * (1 - tr) + (v10 * (1 - tc) + v11 * tc) * tr)
 
 
+@njit(cache=True, inline="always")
+def _bilinear_padded(padded: np.ndarray, g: int, row: float, col: float, n: int) -> float:
+    """Bilinear sample of a padded face at centre-index coords (may be slightly < 0 or > n-1)."""
+    m = n + 2 * HALO
+    r = min(max(row + HALO, 0.0), m - 1.000001)
+    c = min(max(col + HALO, 0.0), m - 1.000001)
+    r0 = math.floor(r)
+    c0 = math.floor(c)
+    tr = r - r0
+    tc = c - c0
+    v00 = padded[g, r0, c0]
+    v01 = padded[g, r0, c0 + 1]
+    v10 = padded[g, r0 + 1, c0]
+    v11 = padded[g, r0 + 1, c0 + 1]
+    return float((v00 * (1 - tc) + v01 * tc) * (1 - tr) + (v10 * (1 - tc) + v11 * tc) * tr)
+
+
+@njit(cache=True)
+def _halo_value(
+    field: np.ndarray, padded: np.ndarray, f: int, i: int, j: int, n: int, use_padded: bool
+) -> float:
+    tv = math.tan(-0.25 * math.pi + (i + 0.5) * 0.5 * math.pi / n)
+    tu = math.tan(-0.25 * math.pi + (j + 0.5) * 0.5 * math.pi / n)
+    x, y, z = tangent_xyz(f, tu, tv, FACE_FRAMES)
+    g, row, col = _face_coords(x, y, z, n)
+    if use_padded:
+        return _bilinear_padded(padded, g, row, col, n)
+    return _bilinear_face(field, g, row, col, n)
+
+
+CORNER_REFINE = 2  # refinement passes for corner halo blocks
+
+
 @njit(cache=True, parallel=True)
 def _pad_faces(field: np.ndarray, n: int) -> np.ndarray:
+    """Faces with a HALO-cell border sampled from the neighbouring faces.
+
+    Edge halos (one coordinate outside the face) sample points well inside
+    the neighbouring face. Corner blocks (both outside) sample points near
+    another face's corner, which needs that face's own corner halo: they get
+    a rough first value and are then refined from the padded arrays a few
+    times, which keeps cube corners second-order accurate.
+    """
     m = n + 2 * HALO
-    out = np.empty((6, m, m), dtype=np.float64)
+    out = np.zeros((6, m, m), dtype=np.float64)
     for f in prange(6):
         for pi in range(m):
             i = pi - HALO
             for pj in range(m):
                 j = pj - HALO
-                if 0 <= i < n and 0 <= j < n:
+                in_i = 0 <= i < n
+                in_j = 0 <= j < n
+                if in_i and in_j:
                     out[f, pi, pj] = field[f * n * n + i * n + j]
                 else:
-                    tv = math.tan(-0.25 * math.pi + (i + 0.5) * 0.5 * math.pi / n)
-                    tu = math.tan(-0.25 * math.pi + (j + 0.5) * 0.5 * math.pi / n)
-                    x, y, z = tangent_xyz(f, tu, tv, FACE_FRAMES)
-                    g, row, col = _face_coords(x, y, z, n)
-                    out[f, pi, pj] = _bilinear_face(field, g, row, col, n)
+                    out[f, pi, pj] = _halo_value(field, out, f, i, j, n, False)
+    corner = np.empty((6, m, m), dtype=np.float64)
+    for _ in range(CORNER_REFINE):
+        for f in prange(6):
+            for pi in range(m):
+                i = pi - HALO
+                for pj in range(m):
+                    j = pj - HALO
+                    if not (0 <= i < n) and not (0 <= j < n):
+                        corner[f, pi, pj] = _halo_value(field, out, f, i, j, n, True)
+        for f in prange(6):
+            for pi in range(m):
+                i = pi - HALO
+                for pj in range(m):
+                    j = pj - HALO
+                    if not (0 <= i < n) and not (0 <= j < n):
+                        out[f, pi, pj] = corner[f, pi, pj]
     return out
 
 
@@ -244,3 +299,37 @@ def cube_to_equirect(grid: Grid, field: np.ndarray, width: int) -> np.ndarray:
         raise ValueError("width must be even")
     padded = _pad_faces(np.ascontiguousarray(field, np.float64), grid.n)
     return _cube_to_equirect(padded, grid.n, width)
+
+
+# --- cube -> cube (continuous, for the cascade) ---------------------------------------------
+
+
+@njit(cache=True, parallel=True)
+def _cube_to_cube(padded: np.ndarray, n: int, nf: int) -> np.ndarray:
+    out = np.empty(6 * nf * nf, dtype=np.float64)
+    for c in prange(6 * nf * nf):
+        f, i, j = cell_fij(c, nf)
+        tu = math.tan(-0.25 * math.pi + (j + 0.5) * 0.5 * math.pi / nf)
+        tv = math.tan(-0.25 * math.pi + (i + 0.5) * 0.5 * math.pi / nf)
+        x, y, z = tangent_xyz(f, tu, tv, FACE_FRAMES)
+        g, row, col = _face_coords(x, y, z, n)
+        r0 = math.floor(row)
+        c0 = math.floor(col)
+        wr = _cr_weights(row - r0)
+        wc = _cr_weights(col - c0)
+        acc = 0.0
+        for a in range(4):
+            pr = r0 - 1 + a + HALO
+            for b in range(4):
+                acc += wr[a] * wc[b] * padded[g, pr, c0 - 1 + b + HALO]
+        out[c] = acc
+    return out
+
+
+def cube_to_cube(coarse: Grid, field: np.ndarray, fine: Grid) -> np.ndarray:
+    """Bicubic resample of a cell field from one cube-sphere grid to another."""
+    if field.shape != (coarse.ncells,):
+        raise ValueError("field must have one value per coarse cell")
+    padded = _pad_faces(np.ascontiguousarray(field, np.float64), coarse.n)
+    out: np.ndarray = _cube_to_cube(padded, coarse.n, fine.n)
+    return out

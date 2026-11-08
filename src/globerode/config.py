@@ -135,6 +135,27 @@ class OceanConfig(_Strict):
     floor_noise_m: float = Field(150.0, ge=0)
 
 
+class ErodeConfig(_Strict):
+    enabled: bool = True
+    k: float = Field(2e-6, gt=0, description="erodibility K (1/yr * m^(1-2m))")
+    m: float = Field(0.5, gt=0, le=1)
+    dt_yr: float = Field(1e5, gt=0)
+    uplift_m_per_yr: float = Field(1e-3, ge=0, description="uplift at the highest painted land")
+    kappa_m2_per_yr: float = Field(1.0, ge=0, description="hillslope diffusivity")
+    iterations: list[int] = Field(default_factory=lambda: [200, 100])
+    epsilon_m: float = Field(1e-3, gt=0)
+    restore_heights: Literal["local", "none"] = "local"
+    restore_sigma_km: float = Field(200.0, gt=0, description="region size for the height restore")
+    river_threshold_km2: float = Field(10_000.0, gt=0)
+
+    @field_validator("iterations")
+    @classmethod
+    def _iters_ok(cls, v: list[int]) -> list[int]:
+        if not v or any(i < 0 for i in v):
+            raise ValueError("iterations must be a non-empty list of counts >= 0")
+        return v
+
+
 class CoastConfig(_Strict):
     mode: Literal["locked"] = "locked"
     min_land_height_m: float = Field(1.0, gt=0)
@@ -167,8 +188,18 @@ class Config(_Strict):
     input: InputConfig
     prep: PrepConfig = PrepConfig()
     ocean: OceanConfig = OceanConfig()
+    erode: ErodeConfig = ErodeConfig()
     coast: CoastConfig = CoastConfig()
     output: OutputConfig = OutputConfig()
+
+    @model_validator(mode="after")
+    def _iterations_match_levels(self) -> Config:
+        if len(self.erode.iterations) != len(self.resolution.levels):
+            raise ValueError(
+                f"erode.iterations has {len(self.erode.iterations)} entries but "
+                f"resolution.levels has {len(self.resolution.levels)}; give one count per level"
+            )
+        return self
 
     @property
     def radius_m(self) -> float:
@@ -181,6 +212,7 @@ class Config(_Strict):
         """The same config at preview size: 2048-wide output, single level N=512."""
         data = self.model_dump()
         data["resolution"] = {"output_width": 2048, "levels": [512]}
+        data["erode"]["iterations"] = [self.erode.iterations[0]]
         return Config.model_validate(data)
 
 

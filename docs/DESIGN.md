@@ -134,7 +134,9 @@ Bicubic interpolation near face edges needs cells from the next face.
 `resample.py` builds a temporary padded copy of each face with a 2-cell
 halo. Halo values are interpolated from the neighbouring face at the halo
 cell's exact sphere position, so they are smooth across edges. Halos are
-used only for resampling, never for the simulation.
+used only for resampling, never for the simulation. Corner blocks (both
+coordinates outside the face) are refined iteratively so cube corners stay
+second-order accurate (D13).
 
 ## 4. Fields container
 
@@ -310,7 +312,17 @@ Same finite-volume operator as smoothing (§6.2), on land cells, with
 diffusivity κ (m²/yr) and explicit sub-steps chosen for stability. It
 rounds ridges and stops one-cell spikes.
 
-### 7.6 Keeping heights as painted: hypsometry restore **[Decision D6]**
+### 7.6 Keeping heights as painted: local height restore **[D16, replaces D6]**
+
+**Superseded.** The global hypsometry restore below matched the height
+*distribution* over the whole globe, which at 8K moved mountain-ridge
+heights onto plateau divides. It was replaced by a **local restore** (D16):
+a smooth offset G((h_init − h_eroded)·w) / G(w) is added to eroded land, with
+G a Gaussian of `restore_sigma_km` (default 200 km) and w the land fraction.
+The offset is computed on a coarse grid (cell ≤ σ/4) from area-weighted
+block averages and upsampled bicubically. Each region keeps its painted mean
+height and the eroded relief is kept as is. (A multiplicative factor was
+tried first; it stretched relief and overshot painted peaks ~2×.) Original text, kept for the record:
 
 Uplift ∝ painted height keeps ranges roughly in place, but final heights
 depend on K, U and time, which are fiddly to tune. So an optional final
@@ -326,9 +338,9 @@ their distribution (hypsometry) matches `h_init`'s.
 ### 7.7 Cascade
 
 - Level 0 (N=512): `iterations[512]` iterations.
-- Upsample h to N=2048 (bicubic via halos, §3.4), add the fine noise
-  octaves (§6.4), recompute the fine land mask and coast clamp, run
-  `iterations[2048]` iterations.
+- Upsample h to N=2048 (bicubic via halos, §3.4, with sea cells set to
+  0 m first, D14), add the fine noise octaves (§6.4), recompute the fine
+  land mask and coast clamp, run `iterations[2048]` iterations.
 - Uplift and `h_init` are recomputed at the fine level from the
   fine-resolution prep (not upsampled), so the fine coastline stays sharp.
 - Δt and K are the same at every level, so parameters mean the same thing

@@ -23,7 +23,7 @@ def _pixel_xyz(width: int) -> np.ndarray:
     return np.stack([np.cos(la) * np.cos(lo), np.cos(la) * np.sin(lo), np.sin(la)], -1)
 
 
-@pytest.mark.parametrize("n", [16, 48])
+@pytest.mark.parametrize("n", [16, 32, 48])
 def test_smooth_field_round_trip_has_no_seams(n: int) -> None:
     grid = Grid(n)
     p = grid.xyz()
@@ -32,7 +32,7 @@ def test_smooth_field_round_trip_has_no_seams(n: int) -> None:
     q = _pixel_xyz(4 * n)
     err = out - (q[..., 0] * q[..., 2] + 0.5 * q[..., 1])
     cell = (np.pi / 2) / n
-    assert np.abs(err).max() < 0.5 * cell**2
+    assert np.abs(err).max() < 0.2 * cell**2  # second order everywhere, cube corners included
     # No jumps: neighbouring pixel errors differ by far less than the field step.
     assert np.abs(np.diff(err, axis=1)).max() < 0.1 * cell
     assert np.abs(np.diff(err, axis=0)).max() < 0.1 * cell
@@ -117,3 +117,26 @@ def test_reads_16bit_levels(tmp_path: Path) -> None:
     Image.fromarray(img).save(cfg.input.levels)
     assert Image.open(cfg.input.levels).mode == "I;16"
     assert read_levels(cfg.input.levels, cfg).shape == (32, 64)
+
+
+@pytest.mark.parametrize("n", [8, 16, 32])
+def test_upsampling_error_is_second_order_at_cube_corners(n: int) -> None:
+    from globerode.resample import cube_to_cube
+
+    coarse, fine = Grid(n), Grid(4 * n)
+    pc, pf = coarse.xyz(), fine.xyz()
+    err = np.abs(cube_to_cube(coarse, pc[:, 0] * pc[:, 2], fine) - pf[:, 0] * pf[:, 2])
+    assert np.isfinite(err).all()
+    assert err.max() < 0.15 * ((np.pi / 2) / n) ** 2
+
+
+def test_cube_to_cube_upsamples_smooth_field() -> None:
+    from globerode.resample import cube_to_cube
+
+    coarse, fine = Grid(16), Grid(64)
+    pc, pf = coarse.xyz(), fine.xyz()
+    up = cube_to_cube(coarse, pc[:, 0] * pc[:, 2] + 0.5 * pc[:, 1], fine)
+    err = np.abs(up - (pf[:, 0] * pf[:, 2] + 0.5 * pf[:, 1]))
+    assert err.max() < 0.15 * ((np.pi / 2) / 16) ** 2
+    same = cube_to_cube(coarse, pc[:, 0], coarse)
+    assert np.allclose(same, pc[:, 0], atol=1e-12)

@@ -58,19 +58,31 @@ def face_weights(n: int, face: int = 0) -> np.ndarray:
 
 
 @njit(cache=True, parallel=True)
-def _diffuse(
-    h: np.ndarray, mask: np.ndarray, w: np.ndarray, n: int, dt: float, steps: int
-) -> np.ndarray:
-    cur = h.copy()
-    nxt = h.copy()
-    ncells = h.shape[0]
-    nbrs = np.empty((ncells, 4), dtype=np.int32)
-    for c in prange(ncells):
+def edge_neighbours(n: int) -> np.ndarray:
+    """(ncells, 4) int32 table of W, E, S, N neighbours (16 B/cell)."""
+    nbrs = np.empty((6 * n * n, 4), dtype=np.int32)
+    for c in prange(6 * n * n):
         f, i, j = cell_fij(c, n)
         for k in range(4):
             nbrs[c, k] = neighbour(
                 f, i, j, NEIGHBOUR_OFFSETS[k, 0], NEIGHBOUR_OFFSETS[k, 1], n, EDGE_TABLE
             )
+    return nbrs
+
+
+@njit(cache=True, parallel=True)
+def _diffuse(
+    h: np.ndarray,
+    mask: np.ndarray,
+    w: np.ndarray,
+    nbrs: np.ndarray,
+    n: int,
+    dt: float,
+    steps: int,
+) -> np.ndarray:
+    cur = h.copy()
+    nxt = h.copy()
+    ncells = h.shape[0]
     for _ in range(steps):
         for c in prange(ncells):
             if not mask[c]:
@@ -89,29 +101,55 @@ def _diffuse(
     return cur
 
 
-def diffusion_steps(grid: Grid, sigma_m: float, weights: np.ndarray) -> tuple[int, float]:
-    """Number of explicit steps and step size (unit-sphere time) for a blur of sigma_m."""
-    t_total = 0.5 * (sigma_m / grid.radius_m) ** 2
-    dt_max = STABILITY / float(weights.sum(axis=2).max())
-    steps = max(1, math.ceil(t_total / dt_max))
-    return steps, t_total / steps
+class Diffuser:
+    """Masked diffusion on one grid, with its lookup tables built once (D12).
+
+    Tables: (N, N, 4) float32 weights shared by all faces, and a
+    (ncells, 4) int32 neighbour table. Reuse one Diffuser for repeated calls
+    (the erosion loop) to avoid rebuilding them.
+    """
+
+    def __init__(self, grid: Grid) -> None:
+        self.grid = grid
+        self.weights = face_weights(grid.n)
+        self.nbrs = edge_neighbours(grid.n)
+        self.dt_max = STABILITY / float(self.weights.sum(axis=2).max())
+
+    def diffuse(self, values: np.ndarray, mask: np.ndarray, t_unit: float) -> np.ndarray:
+        """Diffuse for unit-sphere time ``t_unit`` (= metres^2 / R^2) over masked cells."""
+        g = self.grid
+        if values.shape != (g.ncells,) or mask.shape != (g.ncells,):
+            raise ValueError("values and mask must have one value per cell")
+        h = np.ascontiguousarray(values, dtype=np.float64)
+        if t_unit <= 0:
+            return h.copy()
+        steps = max(1, math.ceil(t_unit / self.dt_max))
+        out: np.ndarray = _diffuse(
+            h,
+            np.ascontiguousarray(mask, np.bool_),
+            self.weights,
+            self.nbrs,
+            g.n,
+            t_unit / steps,
+            steps,
+        )
+        return out
+
+    def gaussian(self, values: np.ndarray, mask: np.ndarray, sigma_m: float) -> np.ndarray:
+        """Blur of width sigma_m (diffusion time sigma^2 / 2)."""
+        return self.diffuse(values, mask, 0.5 * (sigma_m / self.grid.radius_m) ** 2)
 
 
 def gaussian_smooth(grid: Grid, values: np.ndarray, mask: np.ndarray, sigma_m: float) -> np.ndarray:
     """Gaussian-like blur of width sigma_m over masked cells; others unchanged.
 
-    Note: the neighbour table built here is (ncells, 4) int32, 16 B/cell,
-    freed on return.
+    Builds a temporary Diffuser; use one directly for repeated calls.
     """
     if values.shape != (grid.ncells,) or mask.shape != (grid.ncells,):
         raise ValueError("values and mask must have one value per cell")
     if sigma_m <= 0:
         return np.asarray(values, dtype=np.float64).copy()
-    w = face_weights(grid.n)
-    steps, dt = diffusion_steps(grid, sigma_m, w)
-    h = np.ascontiguousarray(values, dtype=np.float64)
-    out: np.ndarray = _diffuse(h, np.ascontiguousarray(mask, np.bool_), w, grid.n, dt, steps)
-    return out
+    return Diffuser(grid).gaussian(values, mask, sigma_m)
 
 
 def smoothstep(edge0: float, edge1: float, x: np.ndarray) -> np.ndarray:

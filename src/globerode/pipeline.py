@@ -1,7 +1,7 @@
 """Runs the stages in order and writes a run directory (DESIGN §1, §10).
 
-Stages so far: resample -> prep (smoothing, curve, noise, ocean) -> export
--> previews. Erosion is added in plan step 6.
+Stages: resample -> erode (prep + erosion at each cascade level; or prep only
+when erosion is disabled) -> export (heights, masks) -> previews.
 """
 
 from __future__ import annotations
@@ -22,7 +22,8 @@ import numpy as np
 
 from globerode import __version__
 from globerode.config import Config, dump_toml
-from globerode.export import relock_coast, write_heights, write_mask_png8
+from globerode.erode.cascade import run_cascade
+from globerode.export import relock_coast, write_heights, write_mask_png8, write_mask_png16
 from globerode.grid import Grid
 from globerode.prep import prep_fields
 from globerode.report.previews import write_hillshade_preview
@@ -160,14 +161,20 @@ def run(cfg: Config, run_dir: Path, quiet: bool = False) -> RunResult:
     nclasses = len(classes_cfg)
     is_land_class = np.array([c.kind == "land" for c in classes_cfg])
     n = cfg.resolution.levels[-1]
-    grid = Grid(n, radius_m=cfg.radius_m)
 
     with log.stage("resample"):
         levels_img = read_levels(cfg.input.levels, cfg)
-        classes = equirect_to_cube_classes(grid, levels_img, nclasses)
 
-    with log.stage("prep"):
-        fields = prep_fields(grid, classes, cfg)
+    mask_info: dict[str, Any] = {}
+    if cfg.erode.enabled:
+        with log.stage("erode"):
+            grid, fields, routing = run_cascade(cfg, levels_img, log.event)
+    else:
+        with log.stage("prep"):
+            grid = Grid(n, radius_m=cfg.radius_m)
+            classes = equirect_to_cube_classes(grid, levels_img, nclasses)
+            fields = prep_fields(grid, classes, cfg)
+            routing = None
 
     out_dir = run_dir / "outputs"
     with log.stage("export"):
@@ -177,6 +184,10 @@ def run(cfg: Config, run_dir: Path, quiet: bool = False) -> RunResult:
         height_eq = relock_coast(height_eq, land_out, cfg.coast)
         written = write_heights(out_dir, height_eq, cfg.output.formats, cfg.output.png_range_m)
         written.append(write_mask_png8(out_dir / "mask_land.png", land_out))
+        if routing is not None:
+            written += _write_erosion_masks(
+                grid, fields, routing.area, land_out, cfg, out_dir, mask_info
+            )
 
     with log.stage("previews"):
         prev_dir = run_dir / "previews"
@@ -201,6 +212,7 @@ def run(cfg: Config, run_dir: Path, quiet: bool = False) -> RunResult:
         },
         "sea_depth_m": {"min": float(sea_px.min()) if sea_px.size else None},
         "png16_mapping_m": list(cfg.output.png_range_m),
+        "masks": mask_info,
         "timings_s": dict(log.timings) | {"total": total},
         "peak_rss_gb": _peak_rss_gb(),
     }
@@ -216,6 +228,44 @@ def run(cfg: Config, run_dir: Path, quiet: bool = False) -> RunResult:
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     log.event("run done", seconds=total)
     return RunResult(run_dir=run_dir, summary=summary)
+
+
+def _write_erosion_masks(
+    grid: Grid,
+    fields: Any,
+    area_m2: np.ndarray,
+    land_out: np.ndarray,
+    cfg: Config,
+    out_dir: Path,
+    info: dict[str, Any],
+) -> list[Path]:
+    """Flow (log drainage area), rivers (area threshold) and erosion depth masks."""
+    width = cfg.resolution.output_width
+    land = fields["land"]
+    cell_min = float(grid.cell_area_m2.min())
+    log_a = np.log10(np.where(land, np.maximum(area_m2, cell_min), cell_min))
+    log_a_eq = cube_to_equirect(grid, log_a, width)
+    lo = float(np.log10(cell_min))
+    hi = float(log_a[land].max()) if land.any() else lo + 1.0
+    flow = np.where(land_out, (log_a_eq - lo) / max(hi - lo, 1e-9), 0.0)
+    thresh = cfg.erode.river_threshold_km2 * 1e6
+    rivers = land_out & (log_a_eq >= np.log10(thresh))
+    eroded = np.maximum(fields["h_init"] - fields["height"], 0.0) * land
+    eroded_eq = cube_to_equirect(grid, eroded, width)
+    emax = float(eroded.max()) if eroded.size else 0.0
+    erosion = np.where(land_out, eroded_eq / max(emax, 1e-9), 0.0)
+    info.update(
+        {
+            "flow": {"log10_area_m2_range": [lo, hi]},
+            "rivers": {"threshold_km2": cfg.erode.river_threshold_km2},
+            "erosion": {"max_depth_m": emax},
+        }
+    )
+    return [
+        write_mask_png16(out_dir / "mask_flow.png", flow),
+        write_mask_png8(out_dir / "mask_rivers.png", rivers),
+        write_mask_png16(out_dir / "mask_erosion.png", erosion),
+    ]
 
 
 def _peak_rss_gb() -> float | None:
