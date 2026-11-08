@@ -90,6 +90,7 @@ def build_report(
     # rough terrain (checked visually, see decision D17), not a seam.
     if (
         seam["status"] in ("fail", "warn")
+        and 0 < seam["value"] < math.inf
         and abs(math.log(seam["value"])) < SEAM_NOISE_SE * m["seams"]["log_se"]
     ):
         seam["status"] = "pass"

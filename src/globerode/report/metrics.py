@@ -141,9 +141,15 @@ def seam_continuity(grid: Grid, height: np.ndarray, land: np.ndarray) -> dict[st
     g = _seam_pairs(np.ascontiguousarray(height, np.float64), land, grid.n, grid.radius_m)
     g = g[g[:, 0] >= 0]
     nan = float("nan")
-    if g.shape[0] < 10 or g[:, 1].mean() == 0 or g[:, 0].mean() == 0:
+    if g.shape[0] < 10:
         return {"ratio": nan, "log_se": nan, "pairs": int(g.shape[0])}
     x, y = g[:, 0], g[:, 1]
+    if y.mean() == 0:
+        # Flat inside the faces: seamless only if also flat across the edges.
+        ratio = 1.0 if x.mean() == 0 else float("inf")
+        return {"ratio": ratio, "log_se": 0.0, "pairs": int(g.shape[0])}
+    if x.mean() == 0:
+        return {"ratio": 0.0, "log_se": 0.0, "pairs": int(g.shape[0])}
     mx, my = x.mean(), y.mean()
     cov = np.cov(x, y)
     n = x.size

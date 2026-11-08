@@ -98,3 +98,12 @@ def test_river_threshold_is_at_least_ten_cells() -> None:
     )
     fine = Grid(2048)
     assert river_threshold_m2(fine, 10_000.0) == pytest.approx(1e10)
+
+
+def test_seam_steps_between_flat_faces_are_flagged() -> None:
+    grid = Grid(16)
+    land = np.ones(grid.ncells, dtype=bool)
+    stepped = np.repeat(np.arange(6) * 100.0, 16 * 16)  # flat faces at different heights
+    assert seam_continuity(grid, stepped, land)["ratio"] == float("inf")
+    flat = np.full(grid.ncells, 7.0)
+    assert seam_continuity(grid, flat, land)["ratio"] == 1.0
