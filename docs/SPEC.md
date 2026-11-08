@@ -62,7 +62,7 @@ eroded without a feature, the feature waits.**
 
 sediment deposition and deposition mask · marine fans ·
 delta coast mode · separate high-res coast mask · hardness / rainfall /
-uplift / protect / forced rivers / forced lakes maps · painted bathymetry ·
+uplift / protect / forced rivers / forced lakes maps · texture and colour maps ·
 cube-face export · lake mask · 16K · checkpoint resume · age slider (§9.4).
 
 ### 2.3 MVP done when
@@ -595,6 +595,7 @@ Rows near the poles are supersampled so they aren't blocky.
 Blender is the globe viewer and renderer. Claude will usually drive it
 through the Blender MCP, but the tool also writes a plain script
 (`blender_globe.py`), so the scene can be rebuilt without Claude.
+Colour and material maps follow in v2 (§12.2).
 
 - **Blender 5.0+, Cycles.** Adaptive subdivision is no longer experimental
   in 5.0, and it has an object-space edge-length option
@@ -613,6 +614,50 @@ through the Blender MCP, but the tool also writes a plain script
   (rivers, valley floors), and a sea-level sphere for water.
 - **Later (v4)**: quad-sphere mesh using the cube-face EXRs, which avoids
   the UV sphere's pinching at the poles.
+
+### 12.2 Texture maps (v2)
+
+Beyond height, the tool exports **colour and material maps derived from
+the terrain**, so valleys, eroded slopes, deposits and peaks can look
+different. All are equirect at output resolution, with cube faces when
+cube export exists.
+
+**Terrain attribute maps** (inputs to colouring, also exported on their own):
+
+| Map | Meaning | Typical use |
+|---|---|---|
+| height | elevation (already exported) | colour bands, snow line |
+| slope | steepness | bare rock on cliffs, soil on flats |
+| curvature | concave (valleys) vs convex (ridges), at a few scales in km | dark valley floors, light ridges |
+| flow / rivers | discharge (already exported) | river beds, wet valleys, vegetation |
+| erosion | material removed (already exported) | exposed rock |
+| deposition | sediment laid down | alluvial plains, fans, beaches |
+| aspect | direction a slope faces | sunny vs shaded slopes |
+| latitude | from grid position | polar ice, simple climate banding |
+| coast distance | already computed | beaches, coastal vegetation |
+
+**Colour map ("albedo")**: rules in config, applied in order, each with
+a colour or gradient and a blend weight from one or more attribute maps.
+Example: base colour by height → blend rock where slope is high → darken
+where curvature is concave → sand where deposition is high near the coast
+→ snow above a line that falls with latitude. Output: 8-bit sRGB PNG
+(16-bit option).
+
+**Material masks**: the same rule weights packed as RGBA "splat" maps,
+plus an optional roughness map, so Blender can mix real materials (rock,
+grass, sand, snow) instead of one baked colour.
+
+**Two ways to use them** (both supported):
+1. Baked colour map from the tool: simple, works in any renderer, and
+   testable in the quality report.
+2. Attribute maps into Blender shader nodes: more flexible, tweak colours
+   without rerunning. The Blender script (§12.1) wires up a starter
+   material.
+
+**Testing**: attribute maps have known-answer tests (e.g. curvature of a
+sphere-cap bump, slope of a cone). Colour rules are checked on synthetic
+worlds by sampling known locations (a valley floor gets the valley colour).
+Rendered previews let Claude check them visually.
 
 ## 13. Performance targets
 
@@ -655,8 +700,8 @@ New code goes in a `globerode/` package. The repo's existing scripts
 | Version | Deliverable |
 |---|---|
 | **v1 (MVP)** | Everything in §2.1. Built in steps: (a) project skeleton, CI, test worlds, cube-sphere grid, resampling, seam tests; (b) prep: coast distance, smoothing, curve, noise, EXR/PNG export, which already gives a usable smoothed globe; (c) CPU erosion + cascade to 8K, flow/erosion masks, previews. |
-| v2 | Sediment deposition + deposition mask. Lake mask. Checkpoint resume. Evaluate the Tzathas-style analytical option. |
-| v3 | Optional painted maps (hardness, rainfall, uplift, protect, forced rivers/lakes), separate high-res coast mask, painted bathymetry, marine fans, delta mode. |
+| v2 | **Texture maps** (§12.2): attribute maps, rule-based colour map, material masks. Sediment deposition + deposition mask. Lake mask. Checkpoint resume. Evaluate the Tzathas-style analytical option. |
+| v3 | Optional painted maps (hardness, rainfall, uplift, protect, forced rivers/lakes), separate high-res coast mask, marine fans, delta mode. |
 | v4 | 16K support on the user PC, cube-face export with a quad-sphere Blender scene. |
 | If needed | GPU backend, only if measured PC runs are too slow (§3.5). |
 | Later | Aspirational directions in §18. |
