@@ -119,6 +119,8 @@ overridden on the command line, e.g. `--set erode.k=1e-6 --set prep.sigma_km=150
 | `erode.rainfall.contrast`, `scale_km` | 4, 1 500 | Wet and dry regions: wetter areas cut more and denser valleys (1 = off). |
 | `erode.uplift.contrast`, `scale_km` | 3, 800 | Uneven mountain building along ranges (1 = off). |
 | `erode.deposition_g` | 1 | Rivers drop sediment: flat valley floors and filled basins (0 = off). |
+| `erode.flow_routing` | `rho8` | Rho8 randomises diagonal flow so channels don't run in straight grid lines (`d8` = plain). |
+| `erode.strata.contrast`, `thickness_m`, `fold_amp_m` | 4, 800, 1 500 | Layered rock: alternating hard/soft bands by elevation, folded, for ledges and benches (contrast 1 = off). |
 | `erode.max_slope_deg` | 8 | Landslide limit at cell scale: straighter slopes, sharper ridges (0 = off). |
 | `erode.river_threshold_km2` | 50 000 | Catchment area that counts as a river in the mask. |
 | `ocean.shelf_width_km`, `shelf_depth_m` | 80, −130 | Continental shelf. |
