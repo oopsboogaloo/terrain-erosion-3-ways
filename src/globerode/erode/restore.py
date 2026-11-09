@@ -43,6 +43,28 @@ def block_average(grid: Grid, values: np.ndarray, weights: np.ndarray, k: int) -
     return out
 
 
+def smooth_over_land(
+    grid: Grid, values: np.ndarray, land: np.ndarray, sigma_m: float
+) -> np.ndarray:
+    """Gaussian mean of ``values`` over land cells only (normalised convolution).
+
+    Computed on a coarse grid (cell <= sigma / 4) and upsampled bicubically.
+    """
+    k = _coarse_factor(grid, sigma_m)
+    coarse = Grid(grid.n // k, radius_m=grid.radius_m)
+    area = grid.cell_area_m2.astype(np.float64)
+    val_c = block_average(grid, np.where(land, values, 0.0), area, k)
+    frac_c = block_average(grid, land.astype(np.float64), area, k)
+    everywhere = np.ones(coarse.ncells, dtype=np.bool_)
+    diffuser = Diffuser(coarse)
+    num = diffuser.gaussian(val_c, everywhere, sigma_m)
+    wsum = diffuser.gaussian(frac_c, everywhere, sigma_m)
+    ok = wsum > 1e-6
+    out_c = np.where(ok, num / np.where(ok, wsum, 1.0), 0.0)
+    out: np.ndarray = cube_to_cube(coarse, out_c, grid) if k > 1 else out_c
+    return out
+
+
 def local_restore(
     grid: Grid,
     h_eroded: np.ndarray,
@@ -52,18 +74,7 @@ def local_restore(
     min_land_m: float,
 ) -> np.ndarray:
     """Shift eroded land so its local mean height matches ``h_init`` (sea unchanged)."""
-    k = _coarse_factor(grid, sigma_m)
-    coarse = Grid(grid.n // k, radius_m=grid.radius_m)
-    area = grid.cell_area_m2.astype(np.float64)
-    diff_c = block_average(grid, np.where(land, h_init - h_eroded, 0.0), area, k)
-    frac_c = block_average(grid, land.astype(np.float64), area, k)
-    everywhere = np.ones(coarse.ncells, dtype=np.bool_)
-    diffuser = Diffuser(coarse)
-    num = diffuser.gaussian(diff_c, everywhere, sigma_m)
-    wsum = diffuser.gaussian(frac_c, everywhere, sigma_m)
-    ok = wsum > 1e-6
-    off_coarse = np.where(ok, num / np.where(ok, wsum, 1.0), 0.0)
-    off = cube_to_cube(coarse, off_coarse, grid) if k > 1 else off_coarse
+    off = smooth_over_land(grid, h_init - h_eroded, land, sigma_m)
     out: np.ndarray = np.where(land, np.maximum(h_eroded + off, min_land_m), h_eroded)
     return out
 
@@ -92,4 +103,32 @@ def cap_peaks(
     over = land & (e > 0)
     out = np.array(h, dtype=np.float64)
     out[over] = t[over] + s[over] * np.tanh(e[over] / s[over])
+    return out
+
+
+def cap_peaks_regional(
+    grid: Grid,
+    h: np.ndarray,
+    h_init: np.ndarray,
+    land: np.ndarray,
+    ratio: float,
+    soft: float,
+    sigma_m: float,
+    min_land_m: float,
+) -> np.ndarray:
+    """Cap the regional (smoothed) height instead of each cell (D34).
+
+    S = land mean of h over ~sigma, T = ratio * land mean of h_init. Where S
+    rises above T it is compressed with the same tanh as ``cap_peaks``, and
+    every cell is shifted down by S - cap(S). Local relief (peaks above their
+    valleys) is kept, so tops are not flattened; summits can exceed the cap
+    by their local relief.
+    """
+    if ratio <= 0:
+        return h
+    s_h = smooth_over_land(grid, h, land, sigma_m)
+    t = ratio * np.maximum(smooth_over_land(grid, h_init, land, sigma_m), 1.0)
+    e = s_h - t
+    capped = np.where(e > 0, t + soft * t * np.tanh(np.maximum(e, 0.0) / (soft * t)), s_h)
+    out: np.ndarray = np.where(land, np.maximum(h - (s_h - capped), min_land_m), h)
     return out

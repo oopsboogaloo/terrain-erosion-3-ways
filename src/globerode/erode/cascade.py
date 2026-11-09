@@ -22,7 +22,7 @@ import numpy as np
 
 from globerode.config import Config
 from globerode.erode import ErosionParams, erode, uplift_from_height
-from globerode.erode.restore import cap_peaks, local_restore
+from globerode.erode.restore import cap_peaks, cap_peaks_regional, local_restore
 from globerode.erode.routing import Routing
 from globerode.erode.variation import SEED_OFFSETS, erosion_fields, strata_for
 from globerode.fields import Fields
@@ -50,6 +50,25 @@ def _params(cfg: Config, level: int) -> ErosionParams:
         deposition_g=e.deposition_g,
         deposition_passes=e.deposition_passes,
         rho8_seed=cfg.prep.noise.seed + SEED_OFFSETS["rho8"] if e.flow_routing == "rho8" else None,
+    )
+
+
+def _cap(grid: Grid, fields: Fields, cfg: Config) -> np.ndarray:
+    """Peak cap: per cell (D24), or on the regional mean (D34)."""
+    e = cfg.erode
+    if e.peak_cap_sigma_km > 0:
+        return cap_peaks_regional(
+            grid,
+            fields["height"],
+            fields["h_init"],
+            fields["land"],
+            e.peak_cap_ratio,
+            e.peak_cap_soft,
+            e.peak_cap_sigma_km * 1000.0,
+            cfg.coast.min_land_height_m,
+        )
+    return cap_peaks(
+        fields["height"], fields["h_init"], fields["land"], e.peak_cap_ratio, e.peak_cap_soft
     )
 
 
@@ -137,11 +156,5 @@ def run_cascade(cfg: Config, levels_img: np.ndarray, log: Log) -> tuple[Grid, Fi
                 cfg.erode.restore_sigma_km * 1000.0,
                 cfg.coast.min_land_height_m,
             )
-            fields["height"] = cap_peaks(
-                fields["height"],
-                fields["h_init"],
-                fields["land"],
-                cfg.erode.peak_cap_ratio,
-                cfg.erode.peak_cap_soft,
-            )
+            fields["height"] = _cap(prev_grid, fields, cfg)
     return prev_grid, fields, routing

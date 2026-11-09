@@ -200,6 +200,9 @@ class ErodeConfig(_Strict):
         1.1, ge=0, description="compress land above this x prepared height (0 = off)"
     )
     peak_cap_soft: float = Field(0.1, gt=0, description="headroom above the cap, as a fraction")
+    peak_cap_sigma_km: float = Field(
+        0.0, ge=0, description="cap the regional mean over this width; 0 = each cell (D34)"
+    )
     river_threshold_km2: float = Field(50_000.0, gt=0)
     max_slope_deg: float = Field(
         8.0, ge=0, lt=90, description="landslide slope limit at cell scale (0 = off)"
