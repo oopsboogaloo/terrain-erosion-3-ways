@@ -124,3 +124,18 @@ def test_script_accepts_exaggeration_override(tmp_path: Path) -> None:
     finally:
         sys.argv = old
     assert opts["exaggeration"] == 40.0 and opts["lon"] == 15.0
+
+
+def test_render_refreshes_old_scripts_keeping_settings(tmp_path: Path) -> None:
+    from globerode.blender import read_globe_settings, write_globe_script
+
+    run = _run(tmp_path)
+    before = read_globe_settings(run)
+    script = run / SCRIPT_NAME
+    # An older run's script: same settings, an outdated body without --exaggeration.
+    old = script.read_text().replace('"exaggeration": 0.0,  # 0 = keep SETTINGS', "")
+    script.write_text(old)
+    assert "keep SETTINGS" not in script.read_text()
+    write_globe_script(run, read_globe_settings(run))  # what render() does first
+    assert read_globe_settings(run) == before
+    assert "keep SETTINGS" in script.read_text()
