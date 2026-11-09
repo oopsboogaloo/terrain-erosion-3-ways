@@ -35,6 +35,7 @@ def render(
     lon: float = 0.0,
     lat: float = 20.0,
     timeout_s: float = 3600.0,
+    exaggeration: float = 0.0,
 ) -> dict[str, Any]:
     """Render the run's globe headless with the ``bpy`` module (optional extra)."""
     script = run_dir / SCRIPT_NAME
@@ -61,6 +62,8 @@ def render(
         str(lon),
         "--lat",
         str(lat),
+        "--exaggeration",
+        str(exaggeration),
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
     if proc.returncode != 0 or not out.exists():

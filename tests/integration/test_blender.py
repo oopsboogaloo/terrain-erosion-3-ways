@@ -109,3 +109,18 @@ def test_script_runs_standalone_and_saves_a_blend(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stderr[-1000:]
     assert blend.stat().st_size > 10_000
     assert json.loads(proc.stdout.strip().splitlines()[-1])["ok"] is True
+
+
+def test_script_accepts_exaggeration_override(tmp_path: Path) -> None:
+    run = _run(tmp_path)
+    code = (run / "blender_globe.py").read_text()
+    namespace: dict[str, object] = {"__name__": "globe", "__file__": str(run / "blender_globe.py")}
+    exec(compile(code.replace("import bpy", ""), "settings", "exec"), namespace)
+    args = namespace["_args"]
+    old = sys.argv
+    try:
+        sys.argv = ["blender", "--", "--exaggeration", "40", "--lon", "15"]
+        opts = args()  # type: ignore[operator]
+    finally:
+        sys.argv = old
+    assert opts["exaggeration"] == 40.0 and opts["lon"] == 15.0

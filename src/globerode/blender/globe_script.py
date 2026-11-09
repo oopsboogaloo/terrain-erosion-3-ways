@@ -33,7 +33,15 @@ def _path(rel):
 
 def _args():
     argv = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else sys.argv[1:]
-    opts = {"render": None, "save": None, "size": 1024, "samples": 32, "lon": 0.0, "lat": 20.0}
+    opts = {
+        "render": None,
+        "save": None,
+        "size": 1024,
+        "samples": 32,
+        "lon": 0.0,
+        "lat": 20.0,
+        "exaggeration": 0.0,  # 0 = keep SETTINGS
+    }
     i = 0
     while i < len(argv):
         key = argv[i].lstrip("-")
@@ -247,7 +255,10 @@ def render(path, size, samples):
 
 def main():
     opts = _args()
-    cam, sun = build_scene(SETTINGS)
+    settings = dict(SETTINGS)
+    if opts["exaggeration"] > 0:
+        settings["exaggeration"] = opts["exaggeration"]
+    cam, sun = build_scene(settings)
     aim(cam, sun, opts["lon"], opts["lat"])
     if opts["save"]:
         bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(opts["save"]))

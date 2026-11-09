@@ -156,7 +156,11 @@ sphere, a sun and an orthographic camera.
 blender -b -P runs/<run>/blender_globe.py -- --render globe.png --size 2048 --samples 64
 blender -b -P runs/<run>/blender_globe.py -- --save globe.blend     # open in Blender
 uv run globerode render runs/<run>                                   # same, via bpy
+uv run globerode render runs/<run> --exaggeration 40                 # other height scale
 ```
+
+`--exaggeration` (also on the script) overrides `blender.exaggeration` without
+rerunning erosion.
 
 It can also be run through a Blender MCP connection.
 
