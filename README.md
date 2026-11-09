@@ -114,7 +114,7 @@ overridden on the command line, e.g. `--set erode.k=1e-6 --set prep.sigma_km=150
 | `erode.uplift_per_km_m_per_yr` | 1.3e-4 | Mountain building, per km of painted height. |
 | `erode.iterations` | [200, 100] | Erosion steps per level. |
 | `erode.restore_heights` | `local` | Keep each region (~200 km) at its painted average height. |
-| `erode.peak_cap_ratio` | 1.1 | Peaks are softly capped near this × painted height (0 = off). |
+| `erode.peak_cap_ratio`, `peak_cap_sigma_km` | 1.0, 30 | Regional height (smoothed over 30 km) is softly capped near this × painted; summits keep their relief and can rise ~1.3–1.4× painted. `peak_cap_sigma_km = 0` caps each cell (flatter tops, ≤ ~1.2×). |
 | `erode.erodibility.contrast`, `scale_km`, `sharpness` | 8, 300, 1.5 | Rock hardness varies by up to this factor: gorges, basins, uneven ridges (1 = off). |
 | `erode.rainfall.contrast`, `scale_km` | 4, 1 500 | Wet and dry regions: wetter areas cut more and denser valleys (1 = off). |
 | `erode.uplift.contrast`, `scale_km` | 3, 800 | Uneven mountain building along ranges (1 = off). |
