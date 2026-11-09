@@ -65,7 +65,7 @@ def run_cascade(cfg: Config, levels_img: np.ndarray, log: Log) -> tuple[Grid, Fi
     routing: Routing | None = None
     fields: Fields | None = None
 
-    t_elapsed = 0.0  # model years so far, for the rock elevation of strata (D33)
+    uplift_total: np.ndarray | None = None  # per cell so far, for strata rock elevation (D33)
     for level, n in enumerate(cfg.resolution.levels):
         grid = Grid(n, radius_m=cfg.radius_m)
         classes = equirect_to_cube_classes(grid, levels_img, nclasses)
@@ -98,6 +98,11 @@ def run_cascade(cfg: Config, levels_img: np.ndarray, log: Log) -> tuple[Grid, Fi
             if it == total or it % max(1, total // 5) == 0:
                 log("erosion progress", level=level, iteration=it, of=total)
 
+        # Total uplift so far, carried from the previous level (D33).
+        if uplift_total is None or prev_grid is None:
+            before = np.zeros(grid.ncells)
+        else:
+            before = cube_to_cube(prev_grid, uplift_total, grid)
         result = erode(
             grid,
             start,
@@ -109,9 +114,9 @@ def run_cascade(cfg: Config, levels_img: np.ndarray, log: Log) -> tuple[Grid, Fi
             erodibility=var["erodibility"],
             rainfall=var["rainfall"],
             strata=strata_for(grid, cfg.erode.strata, cfg.prep.noise.seed + SEED_OFFSETS["folds"]),
-            t0_yr=t_elapsed,
+            uplift_before_m=before,
         )
-        t_elapsed += params.iterations * params.dt_yr
+        uplift_total = before + uplift * (params.iterations * params.dt_yr)
         h = np.where(land, result.height, h_init)
         fields["lake_fill"] = result.lake_fill_m
         routing = result.routing

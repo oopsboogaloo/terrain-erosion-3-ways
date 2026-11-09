@@ -61,13 +61,14 @@ def erode(
     erodibility: np.ndarray | None = None,
     rainfall: np.ndarray | None = None,
     strata: Strata | None = None,
-    t0_yr: float = 0.0,
+    uplift_before_m: np.ndarray | None = None,
 ) -> ErosionResult:
     """Run ``params.iterations`` erosion iterations on land cells.
 
     ``erodibility`` and ``rainfall`` are optional per-cell factors (~1).
     ``strata`` multiplies K by a layered-rock factor of rock elevation, i.e.
-    height minus the uplift since ``t0_yr`` years before this call (D33).
+    height minus total uplift: ``uplift_before_m`` (per cell, from earlier
+    cascade levels) plus the uplift during this call (D33).
     """
     is_land = np.ascontiguousarray(land, np.bool_)
     h = np.array(height_m, dtype=np.float64)
@@ -77,6 +78,7 @@ def erode(
         k_field *= erodibility
     lake = np.zeros(grid.ncells, dtype=np.float64)
     uplift_rock = np.asarray(uplift_m_per_yr, dtype=np.float64)
+    before = 0.0 if uplift_before_m is None else np.asarray(uplift_before_m, dtype=np.float64)
     cell_area = grid.cell_area_m2.astype(np.float64) if params.deposition_g > 0 else None
     t_diff = params.kappa_m2_per_yr * params.dt_yr / grid.radius_m**2
     if params.kappa_m2_per_yr > 0 and diffuser is None:
@@ -91,7 +93,7 @@ def erode(
             uplift_m_per_yr,
             k_field
             if strata is None
-            else k_field * strata.factor(h - uplift_rock * (t0_yr + it * params.dt_yr)),
+            else k_field * strata.factor(h - before - uplift_rock * (it * params.dt_yr)),
             r.area,
             r.receiver,
             r.stack,

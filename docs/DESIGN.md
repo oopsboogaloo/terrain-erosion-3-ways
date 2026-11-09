@@ -408,8 +408,9 @@ Uniform parameters make every slope erode the same way, which reads as
   `contrast^(v/2)`, `v = tanh(s·sin(2π(h_rock + fold)/thickness))/tanh(s)`,
   where `h_rock = h − U·t` is the rock's elevation (layers rise with uplift)
   and `fold` is smooth fBm with amplitude `fold_amp_m`. Hard bands make
-  ledges and caps, soft bands benches. Elapsed model time carries across
-  cascade levels.
+  ledges and caps, soft bands benches. Each cell's total uplift is carried
+  to the next cascade level (resampled), so layers don't jump when the
+  uplift rate differs between levels.
 - **Restore rounds (D28).** Local restore + peak cap run three times so
   hard-rock highs clipped by the cap don't lower the regional mean.
 

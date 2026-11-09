@@ -143,3 +143,23 @@ def test_strata_change_erosion() -> None:
     b = erode(grid, h0, land, up, p)
     assert np.array_equal(a.height, erode(grid, h0, land, up, p, strata=st).height)
     assert not np.allclose(a.height, b.height)
+
+
+def test_strata_follow_accumulated_uplift() -> None:
+    from globerode.config import StrataConfig
+    from globerode.erode.variation import strata_for
+
+    grid, h0, land = _cap(16, seed=4)
+    h0 = np.where(land, 2000.0 + h0, h0)
+    up = np.where(land, 1e-3, 0.0)
+    st = strata_for(grid, StrataConfig(contrast=8.0, thickness_m=400.0, fold_amp_m=0.0), 1)
+    p = ErosionParams(iterations=4)
+
+    def run(before: float) -> np.ndarray:
+        return erode(
+            grid, h0, land, up, p, strata=st, uplift_before_m=np.full(grid.ncells, before)
+        ).height
+
+    base = run(0.0)
+    assert np.allclose(run(400.0), base)  # one full band pair: same rock layers
+    assert not np.allclose(run(200.0), base)  # half a band: hard and soft swap
