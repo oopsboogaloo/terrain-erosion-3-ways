@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import pprint
 import subprocess
 import sys
@@ -27,6 +28,22 @@ def write_globe_script(run_dir: Path, settings: dict[str, Any]) -> Path:
     return path
 
 
+def read_globe_settings(run_dir: Path) -> dict[str, Any]:
+    """The SETTINGS dict baked into a run's ``blender_globe.py``."""
+    tree = ast.parse((run_dir / SCRIPT_NAME).read_text())
+    for node in tree.body:
+        if (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "SETTINGS"
+            and node.value is not None
+        ):
+            value = ast.literal_eval(node.value)
+            if isinstance(value, dict):
+                return value
+    raise ConfigError(f"{run_dir / SCRIPT_NAME} has no SETTINGS")
+
+
 def render(
     run_dir: Path,
     out: Path | None = None,
@@ -35,11 +52,15 @@ def render(
     lon: float = 0.0,
     lat: float = 20.0,
     timeout_s: float = 3600.0,
+    exaggeration: float = 0.0,
 ) -> dict[str, Any]:
     """Render the run's globe headless with the ``bpy`` module (optional extra)."""
     script = run_dir / SCRIPT_NAME
     if not script.exists():
         raise ConfigError(f"{script} not found")
+    # Refresh the script from the current template (keeping the run's settings)
+    # so older runs get new options such as --exaggeration and render fixes.
+    write_globe_script(run_dir, read_globe_settings(run_dir))
     try:
         import bpy  # noqa: F401
     except ImportError:
@@ -61,6 +82,8 @@ def render(
         str(lon),
         "--lat",
         str(lat),
+        "--exaggeration",
+        str(exaggeration),
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
     if proc.returncode != 0 or not out.exists():

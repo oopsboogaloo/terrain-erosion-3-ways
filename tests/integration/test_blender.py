@@ -109,3 +109,33 @@ def test_script_runs_standalone_and_saves_a_blend(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stderr[-1000:]
     assert blend.stat().st_size > 10_000
     assert json.loads(proc.stdout.strip().splitlines()[-1])["ok"] is True
+
+
+def test_script_accepts_exaggeration_override(tmp_path: Path) -> None:
+    run = _run(tmp_path)
+    code = (run / "blender_globe.py").read_text()
+    namespace: dict[str, object] = {"__name__": "globe", "__file__": str(run / "blender_globe.py")}
+    exec(compile(code.replace("import bpy", ""), "settings", "exec"), namespace)
+    args = namespace["_args"]
+    old = sys.argv
+    try:
+        sys.argv = ["blender", "--", "--exaggeration", "40", "--lon", "15"]
+        opts = args()  # type: ignore[operator]
+    finally:
+        sys.argv = old
+    assert opts["exaggeration"] == 40.0 and opts["lon"] == 15.0
+
+
+def test_render_refreshes_old_scripts_keeping_settings(tmp_path: Path) -> None:
+    from globerode.blender import read_globe_settings, write_globe_script
+
+    run = _run(tmp_path)
+    before = read_globe_settings(run)
+    script = run / SCRIPT_NAME
+    # An older run's script: same settings, an outdated body without --exaggeration.
+    old = script.read_text().replace('"exaggeration": 0.0,  # 0 = keep SETTINGS', "")
+    script.write_text(old)
+    assert "keep SETTINGS" not in script.read_text()
+    write_globe_script(run, read_globe_settings(run))  # what render() does first
+    assert read_globe_settings(run) == before
+    assert "keep SETTINGS" in script.read_text()

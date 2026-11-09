@@ -537,7 +537,7 @@ All 8-bit PNG, small enough to view (≤ 1024 px):
   (`python blender_globe.py`), or sent by Claude through the Blender MCP.
 - It builds what the spec §12.1 describes: a UV sphere, adaptive
   subdivision, a displacement material from `height_m.exr`, exaggeration
-  from config, a height colour ramp, a sea sphere, sun and camera.
+  from config, a height colour ramp, sea drawn on the same surface at sea level (D35), sun and camera.
 - `globerode render` runs it headless through `bpy` (optional extra
   `globerode[blender]`). Cycles CPU, low samples. It writes `render.png`.
 - Test: render a 256 px image of a test world. Check it isn't blank, the

@@ -68,6 +68,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_ren.add_argument("--samples", type=int, default=32)
     p_ren.add_argument("--lon", type=float, default=0.0)
     p_ren.add_argument("--lat", type=float, default=20.0)
+    p_ren.add_argument(
+        "--exaggeration", type=float, default=0.0, help="vertical exaggeration (0 = run's setting)"
+    )
 
     p_est = sub.add_parser("estimate", help="memory/disk estimate only")
     add_config_args(p_est)
@@ -110,7 +113,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             _emit(rep)
             return EXIT_OK if rep["ok"] else EXIT_QUALITY
         if args.command == "render":
-            _emit(render(args.run_dir, args.out, args.size, args.samples, args.lon, args.lat))
+            _emit(
+                render(
+                    args.run_dir,
+                    args.out,
+                    args.size,
+                    args.samples,
+                    args.lon,
+                    args.lat,
+                    exaggeration=args.exaggeration,
+                )
+            )
             return EXIT_OK
         if args.command == "compare":
             _emit(compare_runs(args.run_a, args.run_b, args.out))

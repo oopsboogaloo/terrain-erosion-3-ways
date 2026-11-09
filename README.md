@@ -149,14 +149,18 @@ branching ratio (these warn).
 ## Blender
 
 `blender_globe.py` builds a globe with true displacement from the EXR
-(Cycles adaptive subdivision), a height colour ramp with rivers, a sea
-sphere, a sun and an orthographic camera.
+(Cycles adaptive subdivision), a height colour ramp with rivers, the sea
+(the same surface held at sea level), a sun and an orthographic camera.
 
 ```sh
 blender -b -P runs/<run>/blender_globe.py -- --render globe.png --size 2048 --samples 64
 blender -b -P runs/<run>/blender_globe.py -- --save globe.blend     # open in Blender
 uv run globerode render runs/<run>                                   # same, via bpy
+uv run globerode render runs/<run> --exaggeration 40                 # other height scale
 ```
+
+`--exaggeration` (also on the script) overrides `blender.exaggeration` without
+rerunning erosion.
 
 It can also be run through a Blender MCP connection.
 
