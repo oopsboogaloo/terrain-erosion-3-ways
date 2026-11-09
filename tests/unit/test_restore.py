@@ -58,3 +58,28 @@ def test_cap_peaks_compresses_only_above_threshold() -> None:
     assert out[2] < out[3]  # monotone
     assert out[4] == 9000.0  # sea untouched
     assert np.array_equal(cap_peaks(h, h_init, land, 0.0, 0.1), h)  # off
+
+
+def test_regional_cap_keeps_local_relief() -> None:
+    from globerode.erode.restore import cap_peaks, cap_peaks_regional, smooth_over_land
+
+    grid, land, ridge, h_init = _world(64)
+    rng = np.random.default_rng(0)
+    relief = 600.0 * (rng.random(grid.ncells) - 0.5)
+    h = np.where(land, 1.5 * h_init + relief, h_init)  # region raised 50 % + local relief
+    out = cap_peaks_regional(grid, h, h_init, land, 1.1, 0.1, 300e3, 1.0)
+    sigma = 300e3
+    s_in = smooth_over_land(grid, h, land, sigma)
+    t = 1.1 * smooth_over_land(grid, h_init, land, sigma)
+    shift = h - out
+    # the regional height after the shift stays under the ceiling T (1 + soft)
+    assert (s_in - shift)[land].max() <= (t * 1.1)[land].max() + 1.0
+    assert ((s_in - shift)[ridge] <= t[ridge] * 1.1 + 1.0).all()
+    # one smooth shift per region: neighbouring cells move together, relief kept
+    nb = grid.neighbours()[:, 0]
+    both = ridge & (nb >= 0) & ridge[np.maximum(nb, 0)]
+    assert np.abs(shift[both] - shift[nb[both]]).max() < 0.05 * shift[both].max()
+    per_cell = cap_peaks(h, h_init, land, 1.1, 0.1)
+    assert np.std((out - per_cell)[ridge]) > 0  # differs from the per-cell cap
+    assert np.array_equal(out[~land], h[~land])  # sea untouched
+    assert np.array_equal(cap_peaks_regional(grid, h, h_init, land, 0.0, 0.1, sigma, 1.0), h)

@@ -411,6 +411,10 @@ Uniform parameters make every slope erode the same way, which reads as
   ledges and caps, soft bands benches. Each cell's total uplift is carried
   to the next cascade level (resampled), so layers don't jump when the
   uplift rate differs between levels.
+- **Regional peak cap (D34).** After each restore round, the cap acts on the
+  30 km land-mean height rather than each cell, and shifts each region down
+  as a whole. Ridge tops keep their relief; summits can rise ~1.3–1.4×
+  painted. `peak_cap_sigma_km = 0` restores the per-cell cap (D24).
 - **Restore rounds (D28).** Local restore + peak cap run three times so
   hard-rock highs clipped by the cap don't lower the regional mean.
 

@@ -197,9 +197,12 @@ class ErodeConfig(_Strict):
     restore_heights: Literal["local", "none"] = "local"
     restore_sigma_km: float = Field(200.0, gt=0, description="region size for the height restore")
     peak_cap_ratio: float = Field(
-        1.1, ge=0, description="compress land above this x prepared height (0 = off)"
+        1.0, ge=0, description="compress land above this x prepared height (0 = off)"
     )
     peak_cap_soft: float = Field(0.1, gt=0, description="headroom above the cap, as a fraction")
+    peak_cap_sigma_km: float = Field(
+        30.0, ge=0, description="cap the regional mean over this width; 0 = each cell (D34)"
+    )
     river_threshold_km2: float = Field(50_000.0, gt=0)
     max_slope_deg: float = Field(
         8.0, ge=0, lt=90, description="landslide slope limit at cell scale (0 = off)"
@@ -258,7 +261,7 @@ class ReportConfig(_Strict):
     seam_ratio: tuple[float, float] = (0.85, 1.15)
     hack_exponent: tuple[float, float] = (0.45, 0.65)
     horton_ratio: tuple[float, float] = (3.0, 5.0)
-    max_height_ratio: tuple[float, float] = (0.85, 1.25)
+    max_height_ratio: tuple[float, float] = (0.85, 1.4)
     hard_checks: list[Literal["coast", "drainage", "seams", "hack", "horton", "max_height"]] = (
         Field(default_factory=lambda: ["coast", "drainage", "seams"])  # type: ignore[arg-type]
     )
