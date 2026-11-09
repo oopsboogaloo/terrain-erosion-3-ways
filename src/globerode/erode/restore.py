@@ -26,9 +26,9 @@ from globerode.resample import cube_to_cube
 from globerode.smooth import Diffuser
 
 
-def _coarse_factor(grid: Grid, sigma_m: float) -> int:
+def _coarse_factor(grid: Grid, sigma_m: float, cells_per_sigma: float = 4.0) -> int:
     cell_m = grid.radius_m * (np.pi / 2) / grid.n
-    k = max(1, int(sigma_m / 4 / cell_m))
+    k = max(1, int(sigma_m / cells_per_sigma / cell_m))
     while grid.n % k:
         k -= 1
     return k
@@ -44,13 +44,18 @@ def block_average(grid: Grid, values: np.ndarray, weights: np.ndarray, k: int) -
 
 
 def smooth_over_land(
-    grid: Grid, values: np.ndarray, land: np.ndarray, sigma_m: float
+    grid: Grid,
+    values: np.ndarray,
+    land: np.ndarray,
+    sigma_m: float,
+    cells_per_sigma: float = 4.0,
 ) -> np.ndarray:
     """Gaussian mean of ``values`` over land cells only (normalised convolution).
 
-    Computed on a coarse grid (cell <= sigma / 4) and upsampled bicubically.
+    Computed on a coarse grid (cell <= sigma / cells_per_sigma) and upsampled
+    bicubically.
     """
-    k = _coarse_factor(grid, sigma_m)
+    k = _coarse_factor(grid, sigma_m, cells_per_sigma)
     coarse = Grid(grid.n // k, radius_m=grid.radius_m)
     area = grid.cell_area_m2.astype(np.float64)
     val_c = block_average(grid, np.where(land, values, 0.0), area, k)
@@ -126,8 +131,10 @@ def cap_peaks_regional(
     """
     if ratio <= 0:
         return h
-    s_h = smooth_over_land(grid, h, land, sigma_m)
-    t = ratio * np.maximum(smooth_over_land(grid, h_init, land, sigma_m), 1.0)
+    # 2 cells per sigma: at 8K this halves the grid, 5x faster and ~0.8 GB less
+    # memory than 4 cells, with height differences under 10 m (D34).
+    s_h = smooth_over_land(grid, h, land, sigma_m, cells_per_sigma=2.0)
+    t = ratio * np.maximum(smooth_over_land(grid, h_init, land, sigma_m, 2.0), 1.0)
     e = s_h - t
     capped = np.where(e > 0, t + soft * t * np.tanh(np.maximum(e, 0.0) / (soft * t)), s_h)
     out: np.ndarray = np.where(land, np.maximum(h - (s_h - capped), min_land_m), h)
