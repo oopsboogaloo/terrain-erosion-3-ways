@@ -272,7 +272,7 @@ Follows [Barnes et al. 2014][barnes], ε variant:
   its receiver. It becomes the `stack` array directly, so no separate
   topological sort is needed.
 - After the flood, each cell's receiver is refined to its **steepest
-  downhill neighbour on h_f**. (It can only be one already popped, because
+  downhill neighbour on h_f** (by default with Rho8 diagonals, §7.10, D32). (It can only be one already popped, because
   it's lower, so the order stays valid.) This gives natural dendritic
   directions instead of flood-order directions.
 - ε = 1e-3 m per cell step: enough to give every flat a drainage
@@ -397,6 +397,20 @@ Uniform parameters make every slope erode the same way, which reads as
   land cell is lowered to at most `tan(max_slope) · d` above every neighbour
   already processed (sea counts as 0 m). Material removed is assumed carried
   away. The angle is at cell scale: ~8° at 8K (4.9 km cells), steeper at 16K.
+- **Rho8 flow directions (D32).** Plain steepest descent (D8) on smooth
+  slopes sends whole hillsides in one grid direction, giving straight,
+  parallel channels. Rho8 ([Fairfield & Leymarie 1991](https://doi.org/10.1029/90WR02658),
+  as in WhiteboxTools' `Rho8Pointer`) stretches each diagonal distance by
+  (2 − r)/√2, r ∈ [0, 1), which averages close to the true diagonal but
+  breaks the grid bias. r is a hash of (cell, direction, seed), so runs
+  repeat exactly.
+- **Layered rock (D33).** K is also multiplied by
+  `contrast^(v/2)`, `v = tanh(s·sin(2π(h_rock + fold)/thickness))/tanh(s)`,
+  where `h_rock = h − U·t` is the rock's elevation (layers rise with uplift)
+  and `fold` is smooth fBm with amplitude `fold_amp_m`. Hard bands make
+  ledges and caps, soft bands benches. Each cell's total uplift is carried
+  to the next cascade level (resampled), so layers don't jump when the
+  uplift rate differs between levels.
 - **Restore rounds (D28).** Local restore + peak cap run three times so
   hard-rock highs clipped by the cap don't lower the regional mean.
 

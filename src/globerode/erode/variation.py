@@ -15,14 +15,16 @@ fixed positions on the sphere, so each cascade level sees the same field.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 
-from globerode.config import Config, VariationConfig
+from globerode.config import Config, StrataConfig, VariationConfig
 from globerode.grid import Grid
 from globerode.noise import NoiseSpec, fbm_on_grid, resolvable_wavelength_m
 
 # Seed offsets so the fields differ from each other and from the height noise.
-SEED_OFFSETS = {"erodibility": 101, "rainfall": 202, "uplift": 303}
+SEED_OFFSETS = {"erodibility": 101, "rainfall": 202, "uplift": 303, "folds": 404, "rho8": 505}
 
 
 def variation_factor(grid: Grid, var: VariationConfig, seed: int) -> np.ndarray:
@@ -49,3 +51,40 @@ def erosion_fields(grid: Grid, cfg: Config) -> dict[str, np.ndarray]:
         "rainfall": variation_factor(grid, e.rainfall, seed + SEED_OFFSETS["rainfall"]),
         "uplift": variation_factor(grid, e.uplift, seed + SEED_OFFSETS["uplift"]),
     }
+
+
+@dataclass(frozen=True)
+class Strata:
+    """Layered-rock erodibility factor (D33)::
+
+        s = (h_rock + fold) / thickness       # band coordinate
+        v = tanh(sharpness * sin(2 pi s)) / tanh(sharpness)
+        factor = contrast ** (v / 2)
+
+    ``h_rock`` is height minus uplift so far, so layers move up with the rock.
+    """
+
+    fold_m: np.ndarray
+    contrast: float
+    thickness_m: float
+    sharpness: float
+
+    def factor(self, h_rock: np.ndarray) -> np.ndarray:
+        s = (h_rock + self.fold_m) / self.thickness_m
+        v = np.tanh(self.sharpness * np.sin(2.0 * np.pi * s)) / np.tanh(self.sharpness)
+        out: np.ndarray = self.contrast ** (v / 2.0)
+        return out
+
+
+def strata_for(grid: Grid, st: StrataConfig, seed: int) -> Strata | None:
+    """Strata on this grid, or None when switched off (contrast 1)."""
+    if st.contrast <= 1.0:
+        return None
+    fold = np.zeros(grid.ncells, dtype=np.float64)
+    if st.fold_amp_m > 0:
+        spec = NoiseSpec(seed=seed, octaves=3, base_m=st.fold_scale_km * 1000.0, gain=0.5, warp=0.3)
+        z = fbm_on_grid(grid, spec, min_wavelength_m=resolvable_wavelength_m(grid))
+        z = z.astype(np.float64)
+        std = float(z.std())
+        fold = st.fold_amp_m * (z - float(z.mean())) / (std if std > 0 else 1.0)
+    return Strata(fold, st.contrast, st.thickness_m, st.sharpness)

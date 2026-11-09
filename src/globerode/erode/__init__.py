@@ -23,6 +23,7 @@ import numpy as np
 from globerode.erode.landslide import limit_slopes
 from globerode.erode.routing import Routing, route
 from globerode.erode.stream_power import stream_power_step
+from globerode.erode.variation import Strata
 from globerode.grid import Grid
 from globerode.smooth import Diffuser
 
@@ -39,6 +40,7 @@ class ErosionParams:
     max_slope_deg: float = 0.0  # 0 = no slope limit
     deposition_g: float = 0.0  # 0 = no deposition (D30)
     deposition_passes: int = 5
+    rho8_seed: int | None = None  # None = D8 receivers (D32)
 
 
 @dataclass
@@ -58,10 +60,15 @@ def erode(
     progress: Callable[[int, int], None] | None = None,
     erodibility: np.ndarray | None = None,
     rainfall: np.ndarray | None = None,
+    strata: Strata | None = None,
+    uplift_before_m: np.ndarray | None = None,
 ) -> ErosionResult:
     """Run ``params.iterations`` erosion iterations on land cells.
 
     ``erodibility`` and ``rainfall`` are optional per-cell factors (~1).
+    ``strata`` multiplies K by a layered-rock factor of rock elevation, i.e.
+    height minus total uplift: ``uplift_before_m`` (per cell, from earlier
+    cascade levels) plus the uplift during this call (D33).
     """
     is_land = np.ascontiguousarray(land, np.bool_)
     h = np.array(height_m, dtype=np.float64)
@@ -70,19 +77,23 @@ def erode(
     if erodibility is not None:
         k_field *= erodibility
     lake = np.zeros(grid.ncells, dtype=np.float64)
+    uplift_rock = np.asarray(uplift_m_per_yr, dtype=np.float64)
+    before = 0.0 if uplift_before_m is None else np.asarray(uplift_before_m, dtype=np.float64)
     cell_area = grid.cell_area_m2.astype(np.float64) if params.deposition_g > 0 else None
     t_diff = params.kappa_m2_per_yr * params.dt_yr / grid.radius_m**2
     if params.kappa_m2_per_yr > 0 and diffuser is None:
         diffuser = Diffuser(grid)
 
     for it in range(params.iterations):
-        r = route(grid, h, is_land, params.epsilon_m, rainfall)
+        r = route(grid, h, is_land, params.epsilon_m, rainfall, params.rho8_seed)
         lake += r.filled - h
         h = r.filled
         stream_power_step(
             h,
             uplift_m_per_yr,
-            k_field,
+            k_field
+            if strata is None
+            else k_field * strata.factor(h - before - uplift_rock * (it * params.dt_yr)),
             r.area,
             r.receiver,
             r.stack,
@@ -102,7 +113,7 @@ def erode(
         if progress is not None:
             progress(it + 1, params.iterations)
 
-    final = route(grid, h, is_land, params.epsilon_m, rainfall)
+    final = route(grid, h, is_land, params.epsilon_m, rainfall, params.rho8_seed)
     return ErosionResult(height=h, routing=final, lake_fill_m=lake)
 
 

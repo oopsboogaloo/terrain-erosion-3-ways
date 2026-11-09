@@ -24,7 +24,7 @@ from globerode.config import Config
 from globerode.erode import ErosionParams, erode, uplift_from_height
 from globerode.erode.restore import cap_peaks, local_restore
 from globerode.erode.routing import Routing
-from globerode.erode.variation import erosion_fields
+from globerode.erode.variation import SEED_OFFSETS, erosion_fields, strata_for
 from globerode.fields import Fields
 from globerode.grid import Grid
 from globerode.noise import fbm_on_grid, resolvable_wavelength_m
@@ -49,6 +49,7 @@ def _params(cfg: Config, level: int) -> ErosionParams:
         max_slope_deg=e.max_slope_deg,
         deposition_g=e.deposition_g,
         deposition_passes=e.deposition_passes,
+        rho8_seed=cfg.prep.noise.seed + SEED_OFFSETS["rho8"] if e.flow_routing == "rho8" else None,
     )
 
 
@@ -64,6 +65,7 @@ def run_cascade(cfg: Config, levels_img: np.ndarray, log: Log) -> tuple[Grid, Fi
     routing: Routing | None = None
     fields: Fields | None = None
 
+    uplift_total: np.ndarray | None = None  # per cell so far, for strata rock elevation (D33)
     for level, n in enumerate(cfg.resolution.levels):
         grid = Grid(n, radius_m=cfg.radius_m)
         classes = equirect_to_cube_classes(grid, levels_img, nclasses)
@@ -96,6 +98,11 @@ def run_cascade(cfg: Config, levels_img: np.ndarray, log: Log) -> tuple[Grid, Fi
             if it == total or it % max(1, total // 5) == 0:
                 log("erosion progress", level=level, iteration=it, of=total)
 
+        # Total uplift so far, carried from the previous level (D33).
+        if uplift_total is None or prev_grid is None:
+            before = np.zeros(grid.ncells)
+        else:
+            before = cube_to_cube(prev_grid, uplift_total, grid)
         result = erode(
             grid,
             start,
@@ -106,7 +113,10 @@ def run_cascade(cfg: Config, levels_img: np.ndarray, log: Log) -> tuple[Grid, Fi
             progress,
             erodibility=var["erodibility"],
             rainfall=var["rainfall"],
+            strata=strata_for(grid, cfg.erode.strata, cfg.prep.noise.seed + SEED_OFFSETS["folds"]),
+            uplift_before_m=before,
         )
+        uplift_total = before + uplift * (params.iterations * params.dt_yr)
         h = np.where(land, result.height, h_init)
         fields["lake_fill"] = result.lake_fill_m
         routing = result.routing
