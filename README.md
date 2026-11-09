@@ -149,8 +149,8 @@ branching ratio (these warn).
 ## Blender
 
 `blender_globe.py` builds a globe with true displacement from the EXR
-(Cycles adaptive subdivision), a height colour ramp with rivers, a sea
-sphere, a sun and an orthographic camera.
+(Cycles adaptive subdivision), a height colour ramp with rivers, the sea
+(the same surface held at sea level), a sun and an orthographic camera.
 
 ```sh
 blender -b -P runs/<run>/blender_globe.py -- --render globe.png --size 2048 --samples 64

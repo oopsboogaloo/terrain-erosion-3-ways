@@ -12,7 +12,7 @@ Without --render it only builds the scene (and saves it with --save).
 
 Scene: a radius-1 UV sphere displaced by the height EXR (Cycles adaptive
 subdivision for renders, a Displace modifier for the viewport), a
-hypsometric colour ramp with rivers, a sea sphere, a sun and a camera.
+hypsometric colour ramp with rivers, sea at sea level (same surface), a sun and a camera.
 """
 
 import json
@@ -105,7 +105,6 @@ def _land_material(s):
     nodes.clear()
     out = nodes.new("ShaderNodeOutputMaterial")
     bsdf = nodes.new("ShaderNodeBsdfPrincipled")
-    bsdf.inputs["Roughness"].default_value = 0.85
     links.new(bsdf.outputs[0], out.inputs["Surface"])
     uv = _lonlat_uv(nodes, links)
 
@@ -115,10 +114,17 @@ def _land_material(s):
     tex.extension = "REPEAT"
     links.new(uv, tex.inputs["Vector"])
 
+    # The sea is the same surface held at sea level (heights below 0 clamped)
+    # and coloured as water, so land and sea can never cross. A separate sea
+    # sphere z-fought with low coastal land at small exaggeration.
+    above = nodes.new("ShaderNodeMath")
+    above.operation = "MAXIMUM"
+    above.inputs[1].default_value = 0.0
+    links.new(tex.outputs["Color"], above.inputs[0])
     disp = nodes.new("ShaderNodeDisplacement")
     disp.inputs["Midlevel"].default_value = 0.0
     disp.inputs["Scale"].default_value = s["exaggeration"] / s["radius_m"]
-    links.new(tex.outputs["Color"], disp.inputs["Height"])
+    links.new(above.outputs[0], disp.inputs["Height"])
     links.new(disp.outputs[0], out.inputs["Displacement"])
 
     rng = nodes.new("ShaderNodeMapRange")
@@ -158,17 +164,23 @@ def _land_material(s):
         links.new(color, mix.inputs["A"])
         mix.inputs["B"].default_value = _linear((0.25, 0.45, 0.75))
         color = mix.outputs["Result"]
-    links.new(color, bsdf.inputs["Base Color"])
+
+    is_sea = nodes.new("ShaderNodeMath")
+    is_sea.operation = "LESS_THAN"
+    is_sea.inputs[1].default_value = 0.0
+    links.new(tex.outputs["Color"], is_sea.inputs[0])
+    sea_mix = nodes.new("ShaderNodeMix")
+    sea_mix.data_type = "RGBA"
+    links.new(is_sea.outputs[0], sea_mix.inputs["Factor"])
+    links.new(color, sea_mix.inputs["A"])
+    sea_mix.inputs["B"].default_value = _linear((0.10, 0.22, 0.42))
+    links.new(sea_mix.outputs["Result"], bsdf.inputs["Base Color"])
+    rough = nodes.new("ShaderNodeMapRange")  # land 0.85, sea 0.25
+    rough.inputs["To Min"].default_value = 0.85
+    rough.inputs["To Max"].default_value = 0.25
+    links.new(is_sea.outputs[0], rough.inputs["Value"])
+    links.new(rough.outputs["Result"], bsdf.inputs["Roughness"])
     return mat, tex.image
-
-
-def _sea_material():
-    mat = bpy.data.materials.new("globerode_sea")
-    mat.use_nodes = True
-    bsdf = mat.node_tree.nodes["Principled BSDF"]
-    bsdf.inputs["Base Color"].default_value = _linear((0.10, 0.22, 0.42))
-    bsdf.inputs["Roughness"].default_value = 0.25
-    return mat
 
 
 def build_scene(s):
@@ -199,7 +211,7 @@ def build_scene(s):
     disp.texture = tex
     disp.texture_coords = "UV"
     disp.mid_level = 0.0
-    disp.strength = s["exaggeration"] / s["radius_m"]
+    disp.strength = s["exaggeration"] / s["radius_m"]  # (sea floor shows in the viewport only)
     disp.show_render = False
 
     # Render: adaptive subdivision + true displacement in the material.
@@ -210,12 +222,6 @@ def build_scene(s):
     sub.adaptive_pixel_size = 1.0
     sub.levels = 0
     sub.show_viewport = False
-
-    bpy.ops.mesh.primitive_uv_sphere_add(segments=128, ring_count=64, radius=1.0)
-    sea = bpy.context.active_object
-    sea.name = "sea"
-    bpy.ops.object.shade_smooth()
-    sea.data.materials.append(_sea_material())
 
     sun = bpy.data.lights.new("sun", "SUN")
     sun.energy = 2.5
